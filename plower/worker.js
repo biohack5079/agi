@@ -4,23 +4,27 @@ import { pipeline, env, RawImage, TextStreamer } from "https://cdn.jsdelivr.net/
 // WebGPUが使えない環境（Linuxの一部や未対応ブラウザ）では、自動的にCPU(WASM)にフォールバックします。
 
 env.allowLocalModels = false;
-env.useBrowserCache = true;
+env.useBrowserCache = false; // OPFSを使用するため通常のCache APIはオフにする
+env.useOriginPrivateFileSystem = true; // Origin Private File System を有効化
+
 // CPU(WASM)で動かす場合のスレッド数を最適化
 env.backends.onnx.wasm.numThreads = 1; // single-threaded to work without crossOriginIsolated
 
-// GPT-2 のモデル上限: positional embedding = 1024 tokens
-const GPT2_MAX_POSITION = 1024;
 // CPU推論のタイムアウト (90秒 — GPT-2 WASMは1トークン≒1-2秒かかるため)
 const CPU_INFERENCE_TIMEOUT_MS = 6000000;
 
 let generatorPromise = null;
 let currentGeneratorModelId = null;
 
-async function initGenerator(task, modelId, device) {
+async function initGenerator(task, modelId, device, token) {
     if (currentGeneratorModelId === modelId && generatorPromise) {
         return generatorPromise;
     }
     
+    // 新しいモデルを読み込む際、古いリソースを明示的に解放する
+    currentGeneratorModelId = null;
+    generatorPromise = null;
+
     // 別のモデルをロード済みの場合は、WASMメモリ解放のため可能であれば破棄(dispose)する
     if (generatorPromise) {
         try {
@@ -30,7 +34,8 @@ async function initGenerator(task, modelId, device) {
     }
     
     currentGeneratorModelId = modelId;
-    generatorPromise = pipeline(task, modelId, {
+    
+    const pipelineOptions = {
         device: device,
         dtype: device === 'webgpu' ? 'q4f16' : 'q4',
         progress_callback: (x) => {
@@ -42,31 +47,15 @@ async function initGenerator(task, modelId, device) {
             }
         }
     });
+
+    // トークンが有効な文字列の場合のみ設定（nullやundefinedを渡すと401エラーになるのを防ぐ）
+    if (token && typeof token === 'string' && token !== 'null' && token !== 'undefined') {
+        pipelineOptions.token = token;
+    }
+
+    generatorPromise = pipeline(task, modelId, pipelineOptions);
     return generatorPromise;
 }
-
-// -------------------------------------------------
-// Pre‑download a lightweight model (or Vision model if GPU is available)
-// This runs when the worker script is evaluated, so the UI
-// does not have to wait for the first request.
-// -------------------------------------------------
-(async () => {
-    try {
-        const dev = await checkDevice();
-        const preModelId = dev === 'webgpu'
-            ? 'onnx-community/Qwen2-VL-2B-Instruct'
-            : 'onnx-community/Qwen2.5-0.5B-Instruct';
-        const task = dev === 'webgpu' ? 'image-text-to-text' : 'text-generation';
-        postMessage({ status: 'loading', output: `Pre‑download initializing (${dev.toUpperCase()})...` });
-        
-        await initGenerator(task, preModelId, dev);
-        
-        postMessage({ status: 'loading', output: 'Model pre‑download completed.' });
-    } catch (e) {
-        console.warn('Pre‑download failed:', e);
-        // ignore – fallback will happen on first request
-    }
-})();
 
 // デバイスの判定（WebGPUが使えればWebGPU、ダメならCPUのWASMへ自動フォールバック）
 async function checkDevice() {
@@ -80,56 +69,45 @@ async function checkDevice() {
 }
 
 self.onmessage = async (e) => {
-    const { type, prompt, image } = e.data;
+    const { type, prompt, image, model, useOPFS, token } = e.data;
 
     if (type === 'generate') {
         try {
             let currentDevice = await checkDevice();
             
-            // 画像があり、ユーザーが実行を希望している場合はVLMを使用。
-            // CPU(WASM)環境では非常に低速ですが、ユーザーの要望により制限を解除します。
-            let useVision = !!image;
-            const modelId = useVision
-                ? 'onnx-community/Qwen2-VL-2B-Instruct'
-                : (currentDevice === 'wasm' ? 'onnx-community/Qwen2.5-0.5B-Instruct' : 'onnx-community/Llama-3.2-1B-Instruct');
+            // 指定されたモデルIDを使用
+            const modelId = model || 'onnx-community/moondream2';
+            
+            // 画像入力の有無に関わらず text-generation タスクで動作します
+            const task = 'text-generation';
+            let useVision = !!image; 
 
             let warningPrefix = "";
-            if (image && currentDevice === 'wasm') {
+            if (useVision && currentDevice === 'wasm') {
                 warningPrefix = "⚠️ WebGPUがオフ（または未対応）のため、CPU(WASM)で画像解析を実行します。完了まで非常に時間がかかる可能性があります。\n\n";
             } else if (currentDevice === 'wasm') {
                 warningPrefix = "⚠️ WebGPUが未対応のため、CPU(WASM)で実行します。推論に時間がかかります。\n\n";
             }
 
-            let generator;
-            // Attempt to load the selected model, fallback to a tiny model on failure
-            try {
-                postMessage({ status: 'loading', output: `初期化中... (エンジン: ${currentDevice.toUpperCase()})` });
-                generator = await initGenerator(useVision ? 'image-text-to-text' : 'text-generation', modelId, currentDevice);
-                generator.modelId = modelId;
-            } catch (e) {
-                console.warn('Model load failed, falling back to tiny Qwen:', e);
-                // fallback to tiny Qwen for CPU only
-                const fallbackId = 'onnx-community/Qwen2.5-0.5B-Instruct';
-                generator = await initGenerator('text-generation', fallbackId, 'wasm');
-                generator.modelId = fallbackId;
-                useVision = false;
-                warningPrefix = "⚠️ 大きなモデルのロードに失敗した（またはメモリ不足の）ため、軽量Qwen(0.5B)にフォールバックしました。画像は無視されます。\n\n" + warningPrefix;
-            }
+            postMessage({ status: 'loading', output: `OSSモデル初期化中... (エンジン: ${currentDevice.toUpperCase()})` });
+            let generator = await initGenerator(task, modelId, currentDevice, token);
+            generator.modelId = modelId;
 
             postMessage({ status: 'loading', output: `推論中... (${currentDevice.toUpperCase()})` });
 
+            // メッセージフォーマット
             let inputs;
+            const messages = [
+                { role: "system", content: "あなたは役に立つアシスタントです。必ず日本語で、簡潔に要点のみを回答してください。" },
+                {
+                    role: "user",
+                    content: useVision 
+                        ? [{ type: "image" }, { type: "text", text: prompt }]
+                        : [{ type: "text", text: prompt }]
+                }
+            ];
+
             if (useVision) {
-                // 画像がある場合のQwen2-VLのフォーマット
-                const messages = [
-                    {
-                        role: "user",
-                        content: [
-                            { type: "image" },
-                            { type: "text", text: prompt + "\n(指示: Gemini APIのように、必ず日本語で簡潔に要点のみを回答してください。長文は避けてください。)" }
-                        ]
-                    }
-                ];
                 const rawImg = await RawImage.fromURL(image);
                 let formattedPrompt;
                 try {
@@ -141,13 +119,8 @@ self.onmessage = async (e) => {
                     // Fallback: simple concatenation when chat template not defined
                     formattedPrompt = prompt;
                 }
-                inputs = { texts: formattedPrompt, images: [rawImg] };
+                inputs = { text: formattedPrompt, images: [rawImg] };
             } else {
-                // テキストのみのフォーマット
-                const messages = [
-                    { role: "system", content: "あなたは役に立つアシスタントです。必ず日本語で、Gemini APIのように非常に簡潔に要点のみを回答してください。長文は避けてください。" },
-                    { role: "user", content: prompt }
-                ];
                 let formattedPrompt;
                 try {
                     formattedPrompt = generator.tokenizer.apply_chat_template(messages, {
@@ -162,18 +135,16 @@ self.onmessage = async (e) => {
             }
 
             // --- 小型モデル (CPU/WASM) 用: 入力トークン数の安全制限 ---
-            const isTinyFallback = generator.modelId === 'onnx-community/Qwen2.5-0.5B-Instruct';
-            let maxNewTokens = 1024;
-            
-            if (isTinyFallback) {
-                // 入力が長すぎるとメモリ不足になるため、入力側のみ安全策をとる
-                const promptText = typeof inputs === 'string' ? inputs : prompt;
-                if (promptText.length > 2000) {
-                    inputs = promptText.slice(0, 2000);
-                    console.warn(`Input truncated to 2000 chars`);
+            const maxNewTokens = 1024;
+
+            if (currentDevice === 'wasm') {
+                // CPU実行時はメモリ不足によるクラッシュを防ぐため、入力を約2000文字に制限
+                if (typeof inputs === 'string' && inputs.length > 2000) {
+                    inputs = inputs.slice(0, 2000);
+                } else if (inputs && typeof inputs.text === 'string' && inputs.text.length > 2000) {
+                    // 画像(Vision)入力時のテキスト部分も制限
+                    inputs.text = inputs.text.slice(0, 2000);
                 }
-            } else {
-                maxNewTokens = 1024;
             }
 
             let generatedText = warningPrefix;
@@ -194,7 +165,7 @@ self.onmessage = async (e) => {
             });
 
             // CPU(WASM)用: 推論開始前に進捗ヘッダーを表示
-            if (isTinyFallback) {
+            if (currentDevice === 'wasm') {
                 postMessage({ status: 'chunk', output: generatedText + `\n⏳ CPU推論開始 (1024トークンを使用予定、じっくり推論します)...`, tokenCount: 0, elapsed: '0', maxTokens: maxNewTokens });
             }
 
@@ -202,13 +173,14 @@ self.onmessage = async (e) => {
             // CPU (WASM) は非常に遅いため、タイムアウトを設けてフリーズを防ぐ
             const inferencePromise = (async () => {
                 try {
-                    if (useVision) {
-                        await generator(inputs, { max_new_tokens: maxNewTokens, temperature: 0.1, do_sample: false, streamer, repetition_penalty: 1.2 });
-                    } else if (isTinyFallback) {
-                        await generator(inputs, { max_new_tokens: maxNewTokens, temperature: 0.1, do_sample: false, streamer, repetition_penalty: 1.2 });
-                    } else {
-                        await generator(inputs, { max_new_tokens: maxNewTokens, temperature: 0.1, do_sample: false, streamer, repetition_penalty: 1.2 });
-                    }
+                    // 推論を実行
+                    await generator(inputs, { 
+                        max_new_tokens: maxNewTokens, 
+                        temperature: 0.1, 
+                        do_sample: false, 
+                        streamer, 
+                        repetition_penalty: 1.2 
+                    });
                 } catch (e) {
                     console.warn('Inference failed, using echo fallback:', e);
                     generatedText += '\n' + '[Error: generation failed]';
