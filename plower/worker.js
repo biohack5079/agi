@@ -4,6 +4,7 @@ import { pipeline, env, RawImage, TextStreamer } from "https://cdn.jsdelivr.net/
 // WebGPUが使えない環境（Linuxの一部や未対応ブラウザ）では、自動的にCPU(WASM)にフォールバックします。
 
 env.allowLocalModels = false;
+env.useBrowserCache = true;
 // CPU(WASM)で動かす場合のスレッド数を最適化
 env.backends.onnx.wasm.numThreads = 1; // single-threaded to work without crossOriginIsolated
 
@@ -35,7 +36,7 @@ async function initGenerator(task, modelId, device) {
         progress_callback: (x) => {
             if (x.status === 'download') {
                 const progressStr = (typeof x.progress === 'number' && !isNaN(x.progress)) ? ` (${Math.round(x.progress)}%)` : '';
-                postMessage({ status: 'loading', output: `モデルDL中: ${x.file}${progressStr}` });
+                postMessage({ status: 'loading', output: `モデル読込中(キャッシュ優先): ${x.file}${progressStr}` });
             } else if (x.status === 'init') {
                 postMessage({ status: 'loading', output: `モデル構築中...` });
             }
@@ -124,7 +125,7 @@ self.onmessage = async (e) => {
                         role: "user",
                         content: [
                             { type: "image" },
-                            { type: "text", text: prompt }
+                            { type: "text", text: prompt + "\n(指示: Gemini APIのように、必ず日本語で簡潔に要点のみを回答してください。長文は避けてください。)" }
                         ]
                     }
                 ];
@@ -143,7 +144,7 @@ self.onmessage = async (e) => {
             } else {
                 // テキストのみのフォーマット
                 const messages = [
-                    { role: "system", content: "あなたは役に立つアシスタントです。必ず日本語で回答してください。" },
+                    { role: "system", content: "あなたは役に立つアシスタントです。必ず日本語で、Gemini APIのように非常に簡潔に要点のみを回答してください。長文は避けてください。" },
                     { role: "user", content: prompt }
                 ];
                 let formattedPrompt;
