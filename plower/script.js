@@ -812,17 +812,11 @@ async function performLlmRequest(modelSelect, llmPrompt, apiKey, onChunk = null,
         if (onChunk) onChunk(result);
         return result;
 
-    } else if (modelSelect.startsWith('offline-')) {
-        // --- WebGPU+WASM Offline Models ---
-        const offlineModelMap = {
-            'offline-moondream2': 'onnx-community/moondream2',
-            'offline-smolvlm': 'onnx-community/SmolVLM-Instruct',
-            'offline-qwen2-vl': 'onnx-community/Qwen2-VL-2B-Instruct',
-            'offline-gemma3-4b': 'onnx-community/gemma-3-4b-it'
-        };
-        const targetModel = offlineModelMap[modelSelect];
-
-        // 送信ボタンが押されたこのタイミングで初めてWorkerを生成し、メモリを確保します。
+    } else if (modelSelect === 'webgpu-wasm-capsule') {
+        // --- WebGPU+WASM Offline Capsule ---
+        // P2P分散コンピューティングの拡張点（Cloudflareシグナリング）
+        // 現在はローカルのWeb Workerと直結していますが、この通信をWebSocketに切り替えることで
+        // 別端末のブラウザ（GPU）で推論させることも可能になります。
         if (!window.capsuleWorker) {
             window.capsuleWorker = new Worker('worker.js', { type: 'module' });
         }
@@ -857,17 +851,7 @@ async function performLlmRequest(modelSelect, llmPrompt, apiKey, onChunk = null,
                 }
             };
             window.capsuleWorker.addEventListener('message', onMessage);
-            
-            // Gemma 3 4B モデルをオフライン用(WebGPU)に指定し、
-            // モデルデータの保存に OPFS (Origin Private File System) を使用するよう指示します。
-            window.capsuleWorker.postMessage({ 
-                type: 'generate', 
-                model: 'onnx-community/moondream2', // 認証不要・超軽量(1.6B)なOSSモデル
-                useOPFS: true,                         // OPFSによる高速・大容量キャッシュを有効化
-                token: localStorage.getItem('plowerHfToken') || "", // nullを避け空文字を渡す
-                prompt: llmPrompt, 
-                image: imageData 
-            });
+            window.capsuleWorker.postMessage({ type: 'generate', prompt: llmPrompt, image: imageData });
         });
 
     } else {
@@ -999,8 +983,8 @@ async function sendToModel() {
     // CPU推論 (GPT-2) はトークン上限が1024のため、コンテキストを大幅に制限する
     // GPT-2: プロンプトテンプレート自体が~100トークン、質問が~50トークンを占めるため
     // コンテキストは300文字程度に抑える必要がある (日本語は1文字≒2-3トークン)
-    const isCpuCapsule = modelSelect.startsWith('offline-');
-    // ブラウザ推論(WebGPU/WASM)はメモリ制限があるため、コンテキストを適度に制限する
+    const isCpuCapsule = modelSelect === 'webgpu-wasm-capsule';
+    // ブラウザ推論(WebGPU/WASM)はメモリ制限があるため、コンテキストを適度に制限する (2000文字程度)
     const maxContextChars = isCpuCapsule ? 2000 : 15000;
     context = context.slice(0, maxContextChars);
 
@@ -1044,10 +1028,6 @@ ${userInput}`;
         // 最終結果の表示 (非ストリーミングモデル用)
         responseParagraph.innerHTML = `<strong>${isEn ? 'Answer' : '回答'}:</strong> ${finalResult.replace(/\n/g, '<br>')}`;
         
-        // メモリ解放: 推論に使用した巨大なコンテキストデータを明示的に破棄
-        context = null;
-        prompt = null;
-
         // 画像を解析に使用した場合、保存を提案する
         if (currentImageBase64) {
             const savePrompt = document.createElement('div');

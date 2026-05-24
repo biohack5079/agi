@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>WebGPU Support Test</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; max-width: 800px; margin: 0 auto; }
+        .success { color: #2ecc71; font-weight: bold; }
+        .warning { color: #f1c40f; font-weight: bold; }
+        .error { color: #e74c3c; font-weight: bold; }
+        pre { background: #2d3436; color: #dfe6e9; padding: 15px; border-radius: 5px; overflow-x: auto; font-size: 0.9em; }
+        .card { border: 1px solid #ddd; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+    <h1>WebGPU 動作テスト</h1>
+    
+    <div class="card">
+        <h3>1. ブラウザ機能チェック</h3>
+        <div id="browser-check">チェック中...</div>
+    </div>
+
+    <div class="card">
+        <h3>2. GPUアダプター情報</h3>
+        <div id="adapter-info">リクエスト待ち...</div>
+    </div>
+
+    <div class="card">
+        <h3>3. 推論エンジン実行テスト</h3>
+        <div id="inference-test">開始ボタンを押してください...</div>
+        <button id="run-btn" style="padding: 10px 20px; cursor: pointer; margin-top: 10px;">テスト実行 (モデルをダウンロードします)</button>
+    </div>
+
+    <script type="module">
+        import { pipeline } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2";
+
+        async function checkBrowser() {
+            const el = document.getElementById('browser-check');
+            if (!navigator.gpu) {
+                el.innerHTML = '<span class="error">❌ WebGPU 未対応: navigator.gpu が見つかりません。</span><br>Chrome/Edge の最新版を使用し、ブラウザ設定を確認してください。';
+                return false;
+            }
+            el.innerHTML = '<span class="success">✅ WebGPU API が利用可能です。</span>';
+            return true;
+        }
+
+        async function checkAdapter() {
+            const el = document.getElementById('adapter-info');
+            try {
+                const adapter = await navigator.gpu.requestAdapter();
+                if (!adapter) throw new Error("アダプターの取得に失敗しました。ハードウェアアクセラレーションが無効な可能性があります。");
+                
+                const info = await adapter.requestAdapterInfo();
+                el.innerHTML = `<span class="success">✅ アダプターを取得しました。</span><br><pre>Vendor: ${info.vendor}\nDevice: ${info.device}\nArchitecture: ${info.architecture}\nDescription: ${info.description}</pre>`;
+                return true;
+            } catch (e) {
+                el.innerHTML = `<span class="error">❌ GPUアダプターの取得に失敗: ${e.message}</span>`;
+                return false;
+            }
+        }
+
+        async function runInference() {
+            const el = document.getElementById('inference-test');
+            el.innerHTML = '<span class="warning">⏳ テスト用モデル (Qwen-0.5B) を WebGPU でロード中... (初回はダウンロードが発生します)</span>';
+            
+            try {
+                const generator = await pipeline('text-generation', 'onnx-community/Qwen2.5-0.5B-Instruct', {
+                    device: 'webgpu',
+                    dtype: 'fp16'
+                });
+
+                el.innerHTML = '<span class="warning">⏳ 推論テスト実行中...</span>';
+                const start = performance.now();
+                const result = await generator("1+1=", { max_new_tokens: 5 });
+                const end = performance.now();
+
+                el.innerHTML = `<span class="success">✅ 推論に成功しました！</span><br><p>推論速度: ${(end - start).toFixed(2)}ms</p><pre>Result: ${result[0].generated_text}</pre>`;
+            } catch (e) {
+                el.innerHTML = `<span class="error">❌ 推論エラー: ${e.message}</span>`;
+            }
+        }
+
+        document.getElementById('run-btn').addEventListener('click', runInference);
+        
+        const supported = await checkBrowser();
+        if (supported) await checkAdapter();
+    </script>
+</body>
+</html>
