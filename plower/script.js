@@ -1,5 +1,5 @@
-// 永続化された文書を格納 (LocalStorageからロード)
-let persistentDocuments = []; 
+// 永続化された文書のメタデータ（ファイル名）のみを格納
+let persistentDocuments = [];
 
 // 現在解析対象となっている画像データ (Base64)
 let currentImageBase64 = null;
@@ -15,57 +15,52 @@ const isEn = !navigator.language.startsWith('ja');
 
 const PREVIEW_MAX_DOCS = 5; // コンテンツ表示エリアに表示する最大ファイル数
 
-// --- IndexedDB 初期化 ---
-const dbName = "PlowerDB";
-const storeName = "documents";
-
-function openDB() {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open(dbName, 1);
-        request.onupgradeneeded = (e) => {
-            const db = e.target.result;
-            db.createObjectStore(storeName);
-        };
-        request.onsuccess = (e) => resolve(e.target.result);
-        request.onerror = (e) => reject(e.target.error);
-    });
+// --- OPFS (Origin Private File System) ヘルパー ---
+async function getRagDir() {
+    const root = await navigator.storage.getDirectory();
+    return await root.getDirectoryHandle('rag_sources', { create: true });
 }
 
-// --- LocalStorageからの文書ロードとファイル一覧の表示 ---
-async function loadDocuments() {
+// 指定したファイルの内容をOPFSから読み込む
+async function getDocumentContent(name) {
     try {
-        // 移行期対応: LocalStorageにデータがあれば取得して移行
-        const legacyDocs = localStorage.getItem('plowerRAGDocs');
-        if (legacyDocs) {
-            persistentDocuments = JSON.parse(legacyDocs);
-            await saveDocuments(); // 新しいDBに保存
-            localStorage.removeItem('plowerRAGDocs'); // 移行完了後削除
-        } else {
-            const db = await openDB();
-            const tx = db.transaction(storeName, "readonly");
-            const store = tx.objectStore(storeName);
-            const request = store.get("plowerRAGDocs");
-            persistentDocuments = await new Promise((resolve) => {
-                request.onsuccess = () => resolve(request.result || []);
-                request.onerror = () => resolve([]);
-            });
-        }
-        updateFileListDisplay();
+        const ragDir = await getRagDir();
+        const fileHandle = await ragDir.getFileHandle(name);
+        const file = await fileHandle.getFile();
+        return await file.text();
     } catch (e) {
-        console.error("Failed to load documents:", e);
-        persistentDocuments = [];
+        console.error(`Failed to read file ${name}:`, e);
+        return "";
     }
 }
 
-// --- LocalStorageへの文書保存 ---
-async function saveDocuments() {
+// 文書をOPFSに保存する
+async function saveDocumentToOPFS(name, content) {
     try {
-        const db = await openDB();
-        const tx = db.transaction(storeName, "readwrite");
-        const store = tx.objectStore(storeName);
-        store.put(persistentDocuments, "plowerRAGDocs");
+        const ragDir = await getRagDir();
+        const fileHandle = await ragDir.getFileHandle(name, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(content);
+        await writable.close();
     } catch (e) {
-        console.error("Failed to save documents:", e);
+        console.error(`Failed to save document ${name} to OPFS:`, e);
+    }
+}
+
+// --- OPFSからの文書ロードとファイル一覧の表示 ---
+async function loadDocuments() {
+    try {
+        const ragDir = await getRagDir();
+        persistentDocuments = [];
+        for await (const entry of ragDir.values()) {
+            if (entry.kind === 'file') {
+                persistentDocuments.push({ name: entry.name });
+            }
+        }
+        updateFileListDisplay();
+    } catch (e) {
+        console.error("Failed to load documents from OPFS:", e);
+        persistentDocuments = [];
     }
 }
 
@@ -84,16 +79,15 @@ async function saveBlobToDirectory(blob, filename) {
     }
 }
 
-// LocalStorageをリセットする関数
+// RAGソースをリセットする関数 (OPFSディレクトリの削除)
 async function resetDocuments() {
     const msgConfirm = isEn 
         ? "Are you sure you want to delete all RAG source documents?\n(This cannot be undone. All uploaded files will be cleared from LocalStorage.)"
-        : "本当にRAGソース文書を全て削除しますか？\n（この操作は元に戻せません。アップロードされたファイルがLocalStorageから全て消去されます。）";
+        : "本当にRAGソース文書を全て削除しますか？\n（この操作は元に戻せません。アップロードされたファイルがストレージから全て消去されます。）";
     if (confirm(msgConfirm)) {
         try {
-            const db = await openDB();
-            const tx = db.transaction(storeName, "readwrite");
-            tx.objectStore(storeName).clear();
+            const root = await navigator.storage.getDirectory();
+            await root.removeEntry('rag_sources', { recursive: true });
 
             persistentDocuments = [];
             document.getElementById('pasteArea').value = '';
@@ -122,7 +116,7 @@ function clearOcrDisplay() {
 }
 
 // --- ファイル一覧表示の更新とクリックイベント設定 ---
-function updateFileListDisplay() {
+async function updateFileListDisplay() {
     const fileListUl = document.getElementById('fileListUl');
     const fileContentDiv = document.getElementById('fileContent');
     fileListUl.innerHTML = '';
@@ -181,16 +175,19 @@ function updateFileListDisplay() {
     const recentDocs = persistentDocuments.slice(-PREVIEW_MAX_DOCS).reverse();
     
     if (recentDocs.length > 0) {
-        recentDocs.forEach(doc => {
+        for (const doc of recentDocs) {
             initialContent += `<p><strong>【${doc.name}】</strong></p>`;
-            if (doc.content.startsWith('data:image/')) {
+            // 内容をオンデマンドで読み込む
+            const content = await getDocumentContent(doc.name);
+            
+            if (content.startsWith('data:image/')) {
                 // 画像の場合はサムネイルを表示
-                initialContent += `<div style="margin-bottom:10px;"><img src="${doc.content}" style="max-width:200px; max-height:150px; border:1px solid #ccc; border-radius:4px;"></div>`;
+                initialContent += `<div style="margin-bottom:10px;"><img src="${content}" style="max-width:200px; max-height:150px; border:1px solid #ccc; border-radius:4px;"></div>`;
             } else {
                 // テキストの場合は内容の一部を表示
-                initialContent += `<pre>--- ${isEn ? 'File Name' : 'ファイル名'}: ${doc.name} ---\n${doc.content.slice(0, 300)}${doc.content.length > 300 ? '...' : ''}</pre>\n`;
+                initialContent += `<pre>--- ${isEn ? 'File Name' : 'ファイル名'}: ${doc.name} ---\n${content.slice(0, 300)}${content.length > 300 ? '...' : ''}</pre>\n`;
             }
-        });
+        }
     } else {
         initialContent += isEn ? '<p>No RAG source documents available.</p>' : '<p>現在RAGのソースとなる文書はありません。</p>';
     }
@@ -201,15 +198,16 @@ function updateFileListDisplay() {
 }
 
 // --- ファイル名クリック時の内容表示 ---
-function showDocumentContent(index) {
+async function showDocumentContent(index) {
     const fileContentDiv = document.getElementById('fileContent');
     const doc = persistentDocuments[index];
     if (doc) {
         let contentHtml = `<h3>${isEn ? 'Selected File' : '選択中のファイル'}: ${doc.name}</h3>`;
-        if (doc.content.startsWith('data:image/')) {
-            contentHtml += `<img src="${doc.content}" style="max-width:100%; border:1px solid #ddd; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.1);">`;
+        const content = await getDocumentContent(doc.name);
+        if (content.startsWith('data:image/')) {
+            contentHtml += `<img src="${content}" style="max-width:100%; border:1px solid #ddd; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.1);">`;
         } else {
-            contentHtml += `<pre>${doc.content}</pre>`;
+            contentHtml += `<pre>${content}</pre>`;
         }
         fileContentDiv.innerHTML = contentHtml;
     }
@@ -353,8 +351,13 @@ async function renameDocument(index) {
     const doc = persistentDocuments[index];
     const newName = await showRenameDialog(isEn ? 'Rename' : '名前を変更', doc.name);
     if (newName && newName !== doc.name) {
+        const content = await getDocumentContent(doc.name);
+        await saveDocumentToOPFS(newName, content);
+        
+        const ragDir = await getRagDir();
+        await ragDir.removeEntry(doc.name);
+        
         doc.name = newName;
-        await saveDocuments();
         updateFileListDisplay();
     }
 }
@@ -363,8 +366,10 @@ async function deleteDocument(index) {
     const doc = persistentDocuments[index];
     const msg = isEn ? `Are you sure you want to delete "${doc.name}"?` : `本当に「${doc.name}」を削除しますか？`;
     if (confirm(msg)) {
+        const ragDir = await getRagDir();
+        await ragDir.removeEntry(doc.name);
+        
         persistentDocuments.splice(index, 1);
-        await saveDocuments();
         updateFileListDisplay();
     }
 }
@@ -457,26 +462,19 @@ async function loadFilesFromDirectory(isSilent = false) {
 
         // マージロジック: 既存の文書を更新または新規追加
         for (const doc of scannedDocs) {
-            const existingIndex = persistentDocuments.findIndex(d => d.name === doc.name);
-            if (existingIndex !== -1) {
-                // 内容が変更されている場合のみ更新
-                if (persistentDocuments[existingIndex].content !== doc.content) {
-                    persistentDocuments[existingIndex].content = doc.content;
-                    changesMade = true;
-                    updatedCount++;
-                }
-            } else {
-                // 新規追加
-                persistentDocuments.push(doc);
-                changesMade = true;
+            const isNew = !persistentDocuments.some(d => d.name === doc.name);
+            await saveDocumentToOPFS(doc.name, doc.content);
+            if (isNew) {
+                persistentDocuments.push({ name: doc.name });
                 addedCount++;
+            } else {
+                updatedCount++;
             }
+            changesMade = true;
         }
 
         if (changesMade) {
-            saveDocuments(); // LocalStorageに保存
             updateFileListDisplay(); // ファイル一覧を更新
-            
             if (!isSilent) {
                 alert(isEn ? `Synced: ${addedCount} added, ${updatedCount} updated.` : `フォルダ「${directoryHandle.name}」から ${addedCount} 件追加、${updatedCount} 件更新しました。`);
             } else {
@@ -517,8 +515,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     const reader = new FileReader();
                     reader.onload = function (e) {
-                        persistentDocuments.push({ name: file.name, content: e.target.result });
-                        saveDocuments(); // 非同期だが順序不問のためそのまま
+                        saveDocumentToOPFS(file.name, e.target.result);
+                        persistentDocuments.push({ name: file.name });
                         updateFileListDisplay();
                     };
                     reader.readAsText(file);
@@ -707,8 +705,10 @@ async function saveOcrTextAsFile() {
     }
 
     if (contentToSave) {
-        persistentDocuments.push({ name: filename, content: contentToSave });
-        await saveDocuments();
+        await saveDocumentToOPFS(filename, contentToSave);
+        if (!persistentDocuments.some(d => d.name === filename)) {
+            persistentDocuments.push({ name: filename });
+        }
     }
     
     document.getElementById('pasteArea').value = '';
@@ -716,7 +716,7 @@ async function saveOcrTextAsFile() {
     currentImageBlob = null;
     currentImageName = "";
     clearOcrDisplay(); // 重要な変更点：保存が完了したら画像とステータスをクリア
-    updateFileListDisplay(); // ファイルリストを更新
+    await updateFileListDisplay(); // ファイルリストを更新
 }
 
 
@@ -967,18 +967,22 @@ async function sendToModel() {
 
     // 文書リストからテキストコンテキストを作成。
     // 画像データ（Base64文字列）が混ざるとプロンプトが巨大になり、AIが混乱するため、[Image Data]というラベルに置き換える。
-    let context = allDocuments.map(doc => {
-        if (doc.content.startsWith('data:image/')) {
+    let contextParts = [];
+    for (const docMeta of allDocuments) {
+        const content = await getDocumentContent(docMeta.name);
+        if (content.startsWith('data:image/')) {
             // 質問の中でファイル名が言及されている画像を優先的にVision入力として選択
-            const isMentioned = userInput.toLowerCase().includes(doc.name.toLowerCase()) || 
-                               userInput.toLowerCase().includes(doc.name.split('.')[0].toLowerCase());
+            const isMentioned = userInput.toLowerCase().includes(docMeta.name.toLowerCase()) || 
+                               userInput.toLowerCase().includes(docMeta.name.split('.')[0].toLowerCase());
             if (isMentioned) {
-                imageDataToSend = doc.content;
+                imageDataToSend = content;
             }
-            return `File: ${doc.name}\nContent: [Image Data (Vision Input)]`;
+            contextParts.push(`File: ${docMeta.name}\nContent: [Image Data (Vision Input)]`);
+        } else {
+            contextParts.push(`File: ${docMeta.name}\nContent: ${content}`);
         }
-        return `File: ${doc.name}\nContent: ${doc.content}`;
-    }).join('\n\n');
+    }
+    let context = contextParts.join('\n\n');
     
     // CPU推論 (GPT-2) はトークン上限が1024のため、コンテキストを大幅に制限する
     // GPT-2: プロンプトテンプレート自体が~100トークン、質問が~50トークンを占めるため
