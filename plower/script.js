@@ -990,9 +990,14 @@ async function sendToModel() {
 
     // プロンプトの生成: LlamaやQwenなど高性能モデル用に詳細な指示を含める
     let prompt;
-    if (isCpuCapsule && !context) {
-        // コンテキストがない場合のシンプルなプロンプト
-        prompt = userInput;
+    if (isCpuCapsule) {
+        if (!context) {
+            // コンテキストがない場合のシンプルなプロンプト
+            prompt = userInput;
+        } else {
+            // カプセル版（小型モデル）用: 英語の複雑な指示は混乱を招くため、シンプルな日本語プロンプトを使用
+            prompt = `以下の参考資料のみに基づいて、質問に日本語で簡潔に答えてください。\n\n【参考資料】\n${context}\n\n【質問】\n${userInput}`;
+        }
     } else {
         // 高性能モデル用: 詳細な指示付きプロンプト
         prompt = `You are a helpful assistant. Your task is to answer the user's question based *only* on the provided [Reference Documents].
