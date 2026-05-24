@@ -2,7 +2,7 @@
 
 # Spaceの設定画面(Variables)での入力ミスを強制的に修正
 export OLLAMA_HOST=0.0.0.0:7860
-export OLLAMA_ORIGINS="https://sagbuntu.web.app,http://localhost:*,http://127.0.0.1:*"
+export OLLAMA_ORIGINS="https://your-domain.com,http://localhost:*,http://127.0.0.1:*"
 
 # Ollamaサーバーをバックグラウンドで起動
 ollama serve &
