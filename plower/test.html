@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <script type="module">
+    import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2";
+    env.allowLocalModels = false;
+    env.backends.onnx.wasm.numThreads = 1;
+
+    async function test() {
+      try {
+        console.log("Loading model...");
+        const generator = await pipeline('text-generation', 'onnx-community/Qwen2.5-0.5B-Instruct', {
+            device: 'wasm',
+            dtype: 'q4'
+        });
+        console.log("Model loaded successfully.");
+        const res = await generator("Hello, how are you?", { max_new_tokens: 10 });
+        console.log("Result:", res);
+        document.body.innerHTML += "<h2>Success!</h2>";
+      } catch (e) {
+        console.error("Error:", e);
+        document.body.innerHTML += "<h2>Error: " + e.toString() + "</h2>";
+      }
+    }
+    test();
+  </script>
+</body>
+</html>

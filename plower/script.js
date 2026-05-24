@@ -822,18 +822,32 @@ async function performLlmRequest(modelSelect, llmPrompt, apiKey, onChunk = null,
         }
         
         return new Promise((resolve, reject) => {
+            let lastOutput = '';
             const onMessage = (e) => {
-                const { status, output, error } = e.data;
+                const { status, output, error, tokenCount, elapsed, maxTokens } = e.data;
                 if (status === 'error') {
                     window.capsuleWorker.removeEventListener('message', onMessage);
                     reject(new Error(error));
                 } else if (status === 'chunk') {
-                    if (onChunk) onChunk(output);
+                    lastOutput = output;
+                    if (onChunk) {
+                        let display = output;
+                        if (tokenCount !== undefined && maxTokens) {
+                            display += `\n\n<span style="color:#888; font-size:0.85em;">[CPU推論中: ${tokenCount}/${maxTokens} トークン (${elapsed}秒)]</span>`;
+                        }
+                        onChunk(display);
+                    }
+                } else if (status === 'heartbeat') {
+                    if (onChunk) {
+                        let display = lastOutput + `\n\n<span style="color:#888; font-size:0.85em;">[CPU推論中... 応答を待っています (${elapsed}秒経過)]</span>`;
+                        onChunk(display);
+                    }
                 } else if (status === 'complete') {
                     window.capsuleWorker.removeEventListener('message', onMessage);
                     resolve(output);
                 } else if (status === 'loading') {
-                    if (onChunk) onChunk(`[WASM/WebGPU Loading: ${output}]`);
+                    lastOutput = `[WASM/WebGPU Loading: ${output}]`;
+                    if (onChunk) onChunk(lastOutput);
                 }
             };
             window.capsuleWorker.addEventListener('message', onMessage);
@@ -911,7 +925,12 @@ async function fetchOllamaStream(endpoint, bodyData, onChunk) {
 }
 
 // --- モデル送信ロジック ---
+let isSending = false; // 多重送信防止フラグ
+
 async function sendToModel() {
+    // 多重送信を防止: 既にリクエスト中なら何もしない
+    if (isSending) return;
+
     const userInputElement = document.getElementById('userInput');
     const userInput = userInputElement.value.trim();
     const pasteAreaContent = document.getElementById('pasteArea').value.trim();
@@ -925,6 +944,7 @@ async function sendToModel() {
         return;
     }
 
+    isSending = true;
     sendButton.disabled = true;
     sendButton.textContent = isEn ? 'Sending...' : '送信中...';
     chatLog.innerHTML += `<p><strong>${isEn ? 'Question' : '質問'}:</strong> ${userInput}</p>`;
@@ -947,7 +967,7 @@ async function sendToModel() {
 
     // 文書リストからテキストコンテキストを作成。
     // 画像データ（Base64文字列）が混ざるとプロンプトが巨大になり、AIが混乱するため、[Image Data]というラベルに置き換える。
-    const context = allDocuments.map(doc => {
+    let context = allDocuments.map(doc => {
         if (doc.content.startsWith('data:image/')) {
             // 質問の中でファイル名が言及されている画像を優先的にVision入力として選択
             const isMentioned = userInput.toLowerCase().includes(doc.name.toLowerCase()) || 
@@ -958,11 +978,24 @@ async function sendToModel() {
             return `File: ${doc.name}\nContent: [Image Data (Vision Input)]`;
         }
         return `File: ${doc.name}\nContent: ${doc.content}`;
-    }).join('\n\n').slice(0, 15000);
+    }).join('\n\n');
+    
+    // CPU推論 (GPT-2) はトークン上限が1024のため、コンテキストを大幅に制限する
+    // GPT-2: プロンプトテンプレート自体が~100トークン、質問が~50トークンを占めるため
+    // コンテキストは300文字程度に抑える必要がある (日本語は1文字≒2-3トークン)
+    const isCpuCapsule = modelSelect === 'webgpu-wasm-capsule';
+    // ブラウザ推論(WebGPU/WASM)はメモリ制限があるため、コンテキストを適度に制限する (2000文字程度)
+    const maxContextChars = isCpuCapsule ? 2000 : 15000;
+    context = context.slice(0, maxContextChars);
 
-    // プロンプトの生成: 質問と同じ言語で回答させるための指示を明確化。
-    // ブラウザの言語設定(isEn)に依存せず、常に同じ構造のプロンプトを渡すことで、モデルの動作を安定させます。
-    const prompt = `You are a helpful assistant. Your task is to answer the user's question based *only* on the provided [Reference Documents].
+    // プロンプトの生成: LlamaやQwenなど高性能モデル用に詳細な指示を含める
+    let prompt;
+    if (isCpuCapsule && !context) {
+        // コンテキストがない場合のシンプルなプロンプト
+        prompt = userInput;
+    } else {
+        // 高性能モデル用: 詳細な指示付きプロンプト
+        prompt = `You are a helpful assistant. Your task is to answer the user's question based *only* on the provided [Reference Documents].
 
 IMPORTANT INSTRUCTIONS:
 1.  **Answer in the same language as the user's [Question].** (If the question is in Japanese, answer in Japanese. If in English, answer in English).
@@ -976,6 +1009,7 @@ ${context}
 
 [Question]
 ${userInput}`;
+    }
 
     // --- 回答生成 ---
     try {
@@ -1040,6 +1074,7 @@ ${userInput}`;
         responseParagraph.innerHTML = `<strong>${isEn ? 'Answer' : '回答'}:</strong> ❌ ${isEn ? 'Error occurred' : 'エラーが発生しました'}: ${errorMsg}`;
         console.error("Model request error:", error);
     } finally {
+        isSending = false;
         sendButton.disabled = false;
         sendButton.textContent = isEn ? 'Send' : '送信';
         // 最新のチャットが見えるようにスクロール
@@ -1155,9 +1190,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     saveHfUrlBtn.parentNode.insertBefore(deleteHfUrlBtn, saveHfUrlBtn.nextSibling);
 
-    // Enterキーでの送信機能
-    document.getElementById('userInput').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
+    // Enterキーでの送信機能 (keydownを使用し、リピート入力とShift+Enterを除外)
+    document.getElementById('userInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey && !e.repeat && !isSending) {
             e.preventDefault();
             sendToModel();
         }
