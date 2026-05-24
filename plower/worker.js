@@ -34,7 +34,8 @@ async function initGenerator(task, modelId, device) {
         dtype: device === 'webgpu' ? 'q4f16' : 'q4',
         progress_callback: (x) => {
             if (x.status === 'download') {
-                postMessage({ status: 'loading', output: `モデルDL中: ${x.file} (${Math.round(x.progress)}%)` });
+                const progressStr = (typeof x.progress === 'number' && !isNaN(x.progress)) ? ` (${Math.round(x.progress)}%)` : '';
+                postMessage({ status: 'loading', output: `モデルDL中: ${x.file}${progressStr}` });
             } else if (x.status === 'init') {
                 postMessage({ status: 'loading', output: `モデル構築中...` });
             }
@@ -142,7 +143,7 @@ self.onmessage = async (e) => {
             } else {
                 // テキストのみのフォーマット
                 const messages = [
-                    { role: "system", content: "You are a helpful assistant." },
+                    { role: "system", content: "あなたは役に立つアシスタントです。必ず日本語で回答してください。" },
                     { role: "user", content: prompt }
                 ];
                 let formattedPrompt;
@@ -159,74 +160,18 @@ self.onmessage = async (e) => {
             }
 
             // --- 小型モデル (CPU/WASM) 用: 入力トークン数の安全制限 ---
-            // CPU での推論速度も考慮し、入力を短く、生成トークンも制限する。
             const isTinyFallback = generator.modelId === 'onnx-community/Qwen2.5-0.5B-Instruct';
-            let maxNewTokens = 128; // CPU(WASM)は1トークン≒1-2秒のため小さくする
+            let maxNewTokens = 1024;
             
             if (isTinyFallback) {
-                // トークナイザーで実際のトークン数を測定
+                // 入力が長すぎるとメモリ不足になるため、入力側のみ安全策をとる
                 const promptText = typeof inputs === 'string' ? inputs : prompt;
-                try {
-                    const tokenized = generator.tokenizer(promptText, { return_tensors: false });
-                    // transformers.js のトークナイザーは Tensor オブジェクトを返す場合がある
-                    // .data (TypedArray), .dims, .size などのプロパティを持つ
-                    const ids = tokenized.input_ids;
-                    let inputLen;
-                    if (Array.isArray(ids)) {
-                        inputLen = ids.length;
-                    } else if (ids && ids.data) {
-                        // Tensor object: .data は TypedArray (BigInt64Array etc.)
-                        inputLen = ids.data.length;
-                    } else if (ids && ids.size != null) {
-                        inputLen = ids.size;
-                    } else if (ids && ids.dims) {
-                        // dims は [batch, seq_len] の形式
-                        inputLen = ids.dims[ids.dims.length - 1];
-                    } else {
-                        // フォールバック: 文字数ベースで概算 (日本語は1文字≒2-3トークン)
-                        inputLen = Math.ceil(promptText.length * 2.5);
-                    }
-                    console.log(`Input token count: ${inputLen}`);
-
-                    // NaN チェック
-                    if (typeof inputLen !== 'number' || isNaN(inputLen)) {
-                        console.warn('inputLen is NaN, using char-based estimate');
-                        inputLen = Math.ceil(promptText.length * 2.5);
-                    }
-
-                    // CPUのメモリ制限を考慮して1024トークン程度で切り詰める
-                    if (inputLen >= GPT2_MAX_POSITION) {
-                        // 入力だけで1024超え → 切り詰めが必要
-                        const safeInputLen = GPT2_MAX_POSITION - 128; // 128トークン分を生成に確保
-                        // ids が Tensor の場合は slice が使えない可能性があるため
-                        // 文字数ベースで切り詰める
-                        const ratio = safeInputLen / inputLen;
-                        inputs = promptText.slice(0, Math.floor(promptText.length * ratio));
-                        maxNewTokens = 128;
-                        console.warn(`Input truncated from ${inputLen} to ~${safeInputLen} tokens (text cut to ${inputs.length} chars)`);
-                    } else {
-                        // 入力 + 生成が 1024 を超えないように生成数を制限
-                        // CPU(WASM)は1トークン≒1-2秒なので128トークン上限 (最大数分)
-                        maxNewTokens = Math.min(128, GPT2_MAX_POSITION - inputLen - 1);
-                        if (maxNewTokens < 16) maxNewTokens = 16; // 最低限の生成は保証
-                        console.log(`max_new_tokens set to ${maxNewTokens}`);
-                    }
-                } catch (tokErr) {
-                    console.warn('Tokenization check failed, using conservative limits:', tokErr);
-                    // トークナイザーが失敗した場合は文字数ベースで安全策
-                    if (promptText.length > 800) {
-                        inputs = promptText.slice(0, 800);
-                    }
-                    maxNewTokens = 64;
+                if (promptText.length > 2000) {
+                    inputs = promptText.slice(0, 2000);
+                    console.warn(`Input truncated to 2000 chars`);
                 }
             } else {
-                maxNewTokens = 1023;
-            }
-
-            // 最終安全策: maxNewTokens が NaN や無効値にならないように
-            if (typeof maxNewTokens !== 'number' || isNaN(maxNewTokens) || maxNewTokens <= 0) {
-                console.warn(`maxNewTokens was invalid (${maxNewTokens}), resetting to 64`);
-                maxNewTokens = 64;
+                maxNewTokens = 1024;
             }
 
             let generatedText = warningPrefix;
@@ -248,7 +193,7 @@ self.onmessage = async (e) => {
 
             // CPU(WASM)用: 推論開始前に進捗ヘッダーを表示
             if (isTinyFallback) {
-                postMessage({ status: 'chunk', output: generatedText + `\n⏳ CPU推論開始 (最大${maxNewTokens}トークン生成予定、1トークン≒1-2秒)...`, tokenCount: 0, elapsed: '0', maxTokens: maxNewTokens });
+                postMessage({ status: 'chunk', output: generatedText + `\n⏳ CPU推論開始 (1024トークンを使用予定、じっくり推論します)...`, tokenCount: 0, elapsed: '0', maxTokens: maxNewTokens });
             }
 
             // Run inference – タイムアウト付き
