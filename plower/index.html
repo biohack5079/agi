@@ -2,9 +2,8 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>ローカル情報を掘り起こすAIショベル「プラウアー」。</title>
-    <link rel="stylesheet" href="style.css"> 
-    <script src='https://unpkg.com/tesseract.js@5.1.0/dist/tesseract.min.js'></script>
+    <title>ローカル情報を掘り起こすAIショベル「プローワー」。</title>
+    <link rel="stylesheet" href="./style.css"> 
     <style>
         h1 {
             white-space: nowrap;
@@ -12,7 +11,7 @@
     </style>
 </head>
 <body>
-    <h1>ローカル情報を掘り起こすAIショベル「プラウアー」。</h1>
+    <h1><span id="titleText">ローカル情報を掘り起こすAIショベル「プローワー」。</span> <a href="manual.html" id="manualLink" style="font-size: 0.4em; margin-left: 15px; text-decoration: none; background: #eee; padding: 5px 10px; border-radius: 4px; color: #333; vertical-align: middle;">[使い方説明書]</a></h1>
     <div class="rag-controls-header">
         <label for="fileInput">RAGソース (フォルダ/ファイル):</label>
         <input type="file" id="fileInput" multiple>
@@ -32,36 +31,41 @@
     <hr>
 
     <label for="pasteArea">一時的なRAGコンテキストとしてテキストまたは画像を貼り付け:</label>
-    <textarea id="pasteArea" placeholder="ここにテキストを貼り付けてください。Ctrl+Vで画像を貼り付けるとOCR処理が開始されます。"></textarea>
+    <textarea id="pasteArea" placeholder="ここにテキストを貼り付けてください。画像を貼り付けると、解析用画像として認識されます。"></textarea>
 
-    <button id="saveOcrButton">OCR/貼付テキストを永続ファイルとして保存</button>
+    <button id="saveOcrButton">貼付テキスト/画像メモを永続ファイルとして保存</button>
     <hr>
 
     <label for="userInput">質問を入力:</label>
     <textarea id="userInput" placeholder="質問を入力してください..."></textarea>
     
     <div style="margin-bottom: 10px; padding: 10px; background-color: #f0f0f0; border-radius: 5px;">
-        <label for="geminiApiKey">Gemini API Key (クラウド利用時のみ):</label>
+        <label for="geminiApiKey">Gemini API Key:</label>
         <input type="password" id="geminiApiKey" placeholder="AIzaSy..." style="width: 300px;">
-        <button id="saveKeyButton">キーをブラウザに保存</button>
+        <button id="saveKeyButton">保存</button>
     </div>
 
     <div style="margin-bottom: 10px; padding: 10px; background-color: #f0f0f0; border-radius: 5px;">
-        <label for="ollamaUrlInput">Ollama URL (Default: localhost):</label>
-        <input type="text" id="ollamaUrlInput" placeholder="http://localhost:11434 or your Hugging Face URL" style="width: 300px;">
-        <button id="saveOllamaUrlButton">URL保存</button>
+        <label for="hfUrlInput">HF / Ollama URL:</label>
+        <input type="password" id="hfUrlInput" placeholder="http://localhost:11434 or https://user-space.hf.space" style="width: 300px;">
+        <button id="saveHfUrlButton">保存</button>
+    </div>
+
+    <div style="margin-bottom: 10px; padding: 10px; background-color: #f0f0f0; border-radius: 5px;">
+        <label for="hfToken">HF Access Token:</label>
+        <input type="password" id="hfToken" placeholder="hf_..." style="width: 300px;">
+        <button id="saveHfTokenButton">保存</button>
     </div>
 
     <label for="modelSelect">モデル選択:</label>
     <select id="modelSelect">
-        <option value="gemma:7b">Gemma 7B (Ollama)</option>
-        <option value="gpt-oss:20b">GPT-OSS 20B (Ollama)</option>
-        <option value="gemma3:12b">Gemma 12B (Ollama)</option>
-        <option value="gpt-oss:120b">GPT-OSS 120B (Ollama)</option>
-
-        <option value="sarasina">Sarasina (SoftBank/Ollama)</option>
-        <option value="gemini-flash" selected>Gemini API Flash (クラウド)</option>
-        <option value="gemini-pro">Gemini API Pro (クラウド)</option>
+        <option value="gemma:7b">Gemma 7B (ローカル)</option>
+        <option value="gpt-oss:20b">GPT-OSS 20B (ローカル)</option>
+        <option value="gemma3:12b">Gemma 12B (ローカル)</option>
+        <option value="gpt-oss:120b">GPT-OSS 120B (ローカル)</option>
+        <option value="sarasina">Sarasina (SoftBank/local)</option>
+        <option value="gemma3:4b-it-q4_K_M" selected>Gemma 3 4B (HF Space / Ollama)</option>
+        <option value="gemini-flash">Gemini API (クラウド)</option>
     </select>
     
     <button id="sendButton">送信</button>
@@ -78,21 +82,25 @@
                 listHeader: 'RAG Source Files (Persisted/Uploaded)',
                 preview: '[Preview of loaded document or selection will appear here]',
                 pasteLabel: 'Paste text or image as temporary RAG context:',
-                pastePlaceholder: 'Paste text here. Ctrl+V to paste image triggers OCR.',
-                saveOcr: 'Save OCR/Pasted Text as Persistent File',
+                pastePlaceholder: 'Paste text here. Ctrl+V to paste image for multimodal analysis.',
+                saveOcr: 'Save Pasted Text/Image Memo as Persistent File',
                 inputLabel: 'Enter Question:',
                 inputPlaceholder: 'Please enter your question...',
-                keyLabel: 'Gemini API Key (Cloud only):',
-                saveKey: 'Save Key to Browser',
+                keyLabel: 'Gemini API Key:',
+                saveKey: 'Save',
                 modelLabel: 'Select Model:',
                 send: 'Send',
                 cloud: '(Cloud)',
-                ollamaUrlLabel: 'Ollama URL (Default: localhost):',
-                saveOllamaUrl: 'Save URL'
+                local: '(local)',
+                hfUrlLabel: 'HF / Ollama URL:',
+                saveHfUrl: 'Save URL',
+                hfTokenLabel: 'HF Access Token:',
+                saveHfToken: 'Save Token',
+                manual: '[Usage Guide]'
             };
 
             document.title = t.title;
-            document.querySelector('h1').textContent = t.title;
+            document.getElementById('titleText').textContent = t.title;
             document.querySelector('label[for="fileInput"]').textContent = t.ragSource;
             document.getElementById('syncFolderButton').textContent = t.sync;
             document.getElementById('resetDocsButton').textContent = t.reset;
@@ -106,14 +114,20 @@
             document.querySelector('label[for="geminiApiKey"]').textContent = t.keyLabel;
             document.getElementById('saveKeyButton').textContent = t.saveKey;
             document.querySelector('label[for="modelSelect"]').textContent = t.modelLabel;
-            document.querySelector('label[for="ollamaUrlInput"]').textContent = t.ollamaUrlLabel;
-            document.getElementById('saveOllamaUrlButton').textContent = t.saveOllamaUrl;
+            document.querySelector('label[for="hfUrlInput"]').textContent = t.hfUrlLabel;
+            document.getElementById('saveHfUrlButton').textContent = t.saveHfUrl;
+            document.querySelector('label[for="hfToken"]').textContent = t.hfTokenLabel;
+            document.getElementById('saveHfTokenButton').textContent = t.saveHfToken;
+            document.getElementById('manualLink').textContent = t.manual;
             document.getElementById('sendButton').textContent = t.send;
             
             const select = document.getElementById('modelSelect');
             for(let opt of select.options) {
                 if(opt.text.includes('(クラウド)')) {
                     opt.text = opt.text.replace('(クラウド)', t.cloud);
+                }
+                if(opt.text.includes('(ローカル)')) {
+                    opt.text = opt.text.replace('(ローカル)', t.local);
                 }
             }
             document.documentElement.lang = 'en';

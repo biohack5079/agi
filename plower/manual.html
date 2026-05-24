@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plower RAG - 使い方説明書</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+            color: #333;
+            background-color: #fafafa;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        h1, h2, h3 { color: #2c3e50; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        code { background: #f0f0f0; padding: 2px 5px; border-radius: 3px; font-family: monospace; }
+        pre { background: #2d3436; color: #dfe6e9; padding: 15px; border-radius: 5px; overflow-x: auto; font-size: 0.9em; }
+        .btn {
+            display: inline-block;
+            background: #3498db;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background 0.2s;
+            margin-bottom: 20px;
+        }
+        .btn:hover { background: #2980b9; }
+        .section { margin-bottom: 30px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="btn" id="backBtn">← アプリに戻る</a>
+        
+        <h1 id="mainTitle">Plower RAG 使い方説明書</h1>
+
+        <div class="section">
+            <h2 id="hfTitle">1. Hugging Face Spacesへのモデル導入</h2>
+            <p id="hfDesc">自前の <strong>Gemma</strong> モデルをHF Spaces上のOllamaで動かす手順:</p>
+            <ol id="hfSteps">
+                <li id="hfStep1">HF Spaceのリポジトリをダウンロード（クローン）します。</li>
+                <li id="hfStep2"><code>.git</code> フォルダのみを残し、他のファイルをすべて削除します。</li>
+                <li id="hfStep3"><a href="https://github.com/biohack5079/sagbi/tree/main/public/html/plower/hf/plower" target="_blank">こちらのGitHub</a>から取得したファイル一式に入れ替えます。</li>
+                <li id="hfStep4">変更をコミットして再度デプロイ（Push）します。これにより <code>gemma3:4b-it-q4_K_M</code> モデルが自動的にインストールされます。</li>
+                <li id="hfStep5">Plowerの「HF / Ollama URL」にSpaceのURLを入力して保存してください。</li>
+            </ol>
+        </div>
+
+        <div class="section">
+            <h2 id="srcTitle">2. RAGソースの設定</h2>
+            <ul>
+                <li id="srcUpload"><strong>アップロード:</strong> 「RAGソース」からローカルのテキストファイルを選択します。</li>
+                <li id="srcSync"><strong>同期:</strong> 「ローカルフォルダ同期」でディレクトリを自動追跡します（Chrome/Edgeのみ）。</li>
+                <li id="srcOcr"><strong>画像:</strong> テキストエリアに画像を貼り付けると、LLMのマルチモーダル解析用コンテキストとして認識されます。</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2 id="qTitle">3. 質問する</h2>
+            <p id="qDesc">質問を入力して送信します。Plowerは読み込まれたすべての文書をコンテキストとして送信します。モデルは提供された情報に基づいて回答します。</p>
+        </div>
+
+        <hr>
+        <a href="index.html" class="btn" id="backBtnBottom">← アプリに戻る</a>
+    </div>
+
+    <script>
+        if (!navigator.language.startsWith('ja')) {
+            const t = {
+                title: 'Plower RAG - Usage Guide',
+                back: '← Back to App',
+                mainTitle: 'Plower RAG Usage Guide',
+                hfTitle: '1. Model Deployment on Hugging Face Spaces',
+                hfDesc: 'Steps to run your own <strong>Gemma</strong> model via Ollama on HF Spaces:',
+                hfStep1: 'Download (clone) your Hugging Face Space repository.',
+                hfStep2: 'Keep only the <code>.git</code> folder and delete all other files.',
+                hfStep3: 'Replace them with files from <a href="https://github.com/biohack5079/sagbi/tree/main/public/html/plower/hf/plower" target="_blank">this GitHub repository</a>.',
+                hfStep4: 'Commit and re-deploy (push). This will automatically install the <code>gemma3:4b-it-q4_K_M</code> model.',
+                hfStep5: 'Enter your Space URL into the "HF / Ollama URL" field in Plower.',
+                srcTitle: '2. Document Sources',
+                srcUpload: '<strong>Upload:</strong> Click "Choose Files" to add local text files.',
+                srcSync: '<strong>Sync:</strong> Use "Sync Local Folder" to track a directory automatically (Chrome/Edge only).',
+                srcOcr: '<strong>Images:</strong> Paste an image directly into the text area to use it for multimodal LLM analysis.',
+                qTitle: '3. Asking Questions',
+                qDesc: 'Enter your question in the box. Plower sends all loaded documents as context. The model will answer based <em>only</em> on those documents.'
+            };
+
+            document.documentElement.lang = 'en';
+            document.title = t.title;
+            document.getElementById('backBtn').textContent = t.back;
+            document.getElementById('backBtnBottom').textContent = t.back;
+            document.getElementById('mainTitle').textContent = t.mainTitle;
+            document.getElementById('hfTitle').textContent = t.hfTitle;
+            document.getElementById('hfDesc').innerHTML = t.hfDesc;
+            document.getElementById('hfStep1').textContent = t.hfStep1;
+            document.getElementById('hfStep2').innerHTML = t.hfStep2;
+            document.getElementById('hfStep3').innerHTML = t.hfStep3;
+            document.getElementById('hfStep4').innerHTML = t.hfStep4;
+            document.getElementById('hfStep5').textContent = t.hfStep5;
+            document.getElementById('srcTitle').textContent = t.srcTitle;
+            document.getElementById('srcUpload').innerHTML = t.srcUpload;
+            document.getElementById('srcSync').innerHTML = t.srcSync;
+            document.getElementById('srcOcr').innerHTML = t.srcOcr;
+            document.getElementById('qTitle').textContent = t.qTitle;
+            document.getElementById('qDesc').textContent = t.qDesc;
+        }
+    </script>
+</body>
+</html>
