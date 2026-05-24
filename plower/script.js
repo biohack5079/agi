@@ -812,6 +812,34 @@ async function performLlmRequest(modelSelect, llmPrompt, apiKey, onChunk = null,
         if (onChunk) onChunk(result);
         return result;
 
+    } else if (modelSelect === 'webgpu-wasm-capsule') {
+        // --- WebGPU+WASM Offline Capsule ---
+        // P2P分散コンピューティングの拡張点（Cloudflareシグナリング）
+        // 現在はローカルのWeb Workerと直結していますが、この通信をWebSocketに切り替えることで
+        // 別端末のブラウザ（GPU）で推論させることも可能になります。
+        if (!window.capsuleWorker) {
+            window.capsuleWorker = new Worker('worker.js', { type: 'module' });
+        }
+        
+        return new Promise((resolve, reject) => {
+            const onMessage = (e) => {
+                const { status, output, error } = e.data;
+                if (status === 'error') {
+                    window.capsuleWorker.removeEventListener('message', onMessage);
+                    reject(new Error(error));
+                } else if (status === 'chunk') {
+                    if (onChunk) onChunk(output);
+                } else if (status === 'complete') {
+                    window.capsuleWorker.removeEventListener('message', onMessage);
+                    resolve(output);
+                } else if (status === 'loading') {
+                    if (onChunk) onChunk(`[WASM/WebGPU Loading: ${output}]`);
+                }
+            };
+            window.capsuleWorker.addEventListener('message', onMessage);
+            window.capsuleWorker.postMessage({ type: 'generate', prompt: llmPrompt, image: imageData });
+        });
+
     } else {
         // --- Ollama Model ---
         let hfUrl = localStorage.getItem('plowerHfUrl') || 'http://localhost:11434';

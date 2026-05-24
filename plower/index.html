@@ -1,17 +1,21 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
     <meta charset="UTF-8">
     <title>ローカル情報を掘り起こすAIショベル「プローワー」。</title>
-    <link rel="stylesheet" href="./style.css"> 
+    <link rel="stylesheet" href="./style.css">
     <style>
         h1 {
             white-space: nowrap;
         }
     </style>
 </head>
+
 <body>
-    <h1><span id="titleText">ローカル情報を掘り起こすAIショベル「プローワー」。</span> <a href="manual.html" id="manualLink" style="font-size: 0.4em; margin-left: 15px; text-decoration: none; background: #eee; padding: 5px 10px; border-radius: 4px; color: #333; vertical-align: middle;">[使い方説明書]</a></h1>
+    <h1><span id="titleText">ローカル情報を掘り起こすAIショベル「プローワー」。</span> <a href="manual.html" id="manualLink"
+            style="font-size: 0.4em; margin-left: 15px; text-decoration: none; background: #eee; padding: 5px 10px; border-radius: 4px; color: #333; vertical-align: middle;">[使い方説明書]</a>
+    </h1>
     <div class="rag-controls-header">
         <label for="fileInput">RAGソース (フォルダ/ファイル):</label>
         <input type="file" id="fileInput" multiple>
@@ -25,7 +29,7 @@
             <ul id="fileListUl">
             </ul>
         </div>
-        
+
         <div id="fileContent">【ここに読み込まれた文書のプレビューまたは選択内容が表示されます】</div>
     </div>
     <hr>
@@ -38,7 +42,7 @@
 
     <label for="userInput">質問を入力:</label>
     <textarea id="userInput" placeholder="質問を入力してください..."></textarea>
-    
+
     <div style="margin-bottom: 10px; padding: 10px; background-color: #f0f0f0; border-radius: 5px;">
         <label for="geminiApiKey">Gemini API Key:</label>
         <input type="password" id="geminiApiKey" placeholder="AIzaSy..." style="width: 300px;">
@@ -47,7 +51,8 @@
 
     <div style="margin-bottom: 10px; padding: 10px; background-color: #f0f0f0; border-radius: 5px;">
         <label for="hfUrlInput">HF / Ollama URL:</label>
-        <input type="password" id="hfUrlInput" placeholder="http://localhost:11434 or https://user-space.hf.space" style="width: 300px;">
+        <input type="password" id="hfUrlInput" placeholder="http://localhost:11434 or https://user-space.hf.space"
+            style="width: 300px;">
         <button id="saveHfUrlButton">保存</button>
     </div>
 
@@ -64,12 +69,16 @@
         <option value="gemma3:12b">Gemma 12B (ローカル)</option>
         <option value="gpt-oss:120b">GPT-OSS 120B (ローカル)</option>
         <option value="sarasina">Sarasina (SoftBank/local)</option>
-        <option value="gemma3:4b-it-q4_K_M" selected>Gemma 3 4B (HF Space / Ollama)</option>
+        <option value="gemma3:4b-it-q4_K_M">Gemma 3 4B (HF Space / Ollama)</option>
+        <option value="webgpu-wasm-capsule" selected>WebGPU (オフライン)</option>
         <option value="gemini-flash">Gemini API (クラウド)</option>
     </select>
-    
+
     <button id="sendButton">送信</button>
-    
+
+    <hr>
+
+
     <div id="chatLog"></div>
 
     <script>
@@ -120,13 +129,13 @@
             document.getElementById('saveHfTokenButton').textContent = t.saveHfToken;
             document.getElementById('manualLink').textContent = t.manual;
             document.getElementById('sendButton').textContent = t.send;
-            
+
             const select = document.getElementById('modelSelect');
-            for(let opt of select.options) {
-                if(opt.text.includes('(クラウド)')) {
+            for (let opt of select.options) {
+                if (opt.text.includes('(クラウド)')) {
                     opt.text = opt.text.replace('(クラウド)', t.cloud);
                 }
-                if(opt.text.includes('(ローカル)')) {
+                if (opt.text.includes('(ローカル)')) {
                     opt.text = opt.text.replace('(ローカル)', t.local);
                 }
             }
@@ -135,4 +144,5 @@
     </script>
     <script src="./script.js"></script>
 </body>
+
 </html>
