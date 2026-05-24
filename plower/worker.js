@@ -85,17 +85,17 @@ self.onmessage = async (e) => {
     if (type === 'generate') {
         try {
             let currentDevice = await checkDevice();
-
-            // CPU(WASM)の場合、画像認識はメモリ不足でクラッシュしやすいためテキストモデルに限定。
-            // WebGPUが使える場合はVLM（Qwen2-VL）を使用して画像検索(OCR/解析)に対応させます。
-            const useVision = image && currentDevice === 'webgpu';
+            
+            // 画像があり、ユーザーが実行を希望している場合はVLMを使用。
+            // CPU(WASM)環境では非常に低速ですが、ユーザーの要望により制限を解除します。
+            let useVision = !!image;
             const modelId = useVision
                 ? 'onnx-community/Qwen2-VL-2B-Instruct'
                 : (currentDevice === 'wasm' ? 'onnx-community/Qwen2.5-0.5B-Instruct' : 'onnx-community/Llama-3.2-1B-Instruct');
 
             let warningPrefix = "";
             if (image && currentDevice === 'wasm') {
-                warningPrefix = "⚠️ WebGPUがオフになっているため、CPU(WASM)で実行します。ブラウザのクラッシュを防ぐため、画像は無視してテキストのみで回答します。\n\n";
+                warningPrefix = "⚠️ WebGPUがオフ（または未対応）のため、CPU(WASM)で画像解析を実行します。完了まで非常に時間がかかる可能性があります。\n\n";
             } else if (currentDevice === 'wasm') {
                 warningPrefix = "⚠️ WebGPUが未対応のため、CPU(WASM)で実行します。推論に時間がかかります。\n\n";
             }
@@ -112,7 +112,8 @@ self.onmessage = async (e) => {
                 const fallbackId = 'onnx-community/Qwen2.5-0.5B-Instruct';
                 generator = await initGenerator('text-generation', fallbackId, 'wasm');
                 generator.modelId = fallbackId;
-                warningPrefix = "⚠️ 大きなモデルのロードに失敗したため、軽量Qwen(0.5B)にフォールバックしました。\n\n" + warningPrefix;
+                useVision = false;
+                warningPrefix = "⚠️ 大きなモデルのロードに失敗した（またはメモリ不足の）ため、軽量Qwen(0.5B)にフォールバックしました。画像は無視されます。\n\n" + warningPrefix;
             }
 
             postMessage({ status: 'loading', output: `推論中... (${currentDevice.toUpperCase()})` });
