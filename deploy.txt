@@ -1,0 +1,17 @@
+git add . && \
+git commit -m "feat: change $(date +'%Y-%m-%d %H:%M:%S')" && \
+git push -u origin main || echo "Git push failed"
+
+
+git reset --hard xxxxxx
+git clean -fdx
+git add . && \
+git commit -m "feat: change $(date +'%Y-%m-%d %H:%M:%S')" && \
+git push origin main --force
+
+
+
+git config user.email "xxxxxx@gmail.com"
+git config user.name "xxxxxx"
+
+
