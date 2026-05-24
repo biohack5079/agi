@@ -105,7 +105,8 @@
                 saveHfUrl: 'Save URL',
                 hfTokenLabel: 'HF Access Token:',
                 saveHfToken: 'Save Token',
-                manual: '[Usage Guide]'
+                manual: '[Usage Guide]',
+                offline: '(Offline)'
             };
 
             document.title = t.title;
@@ -132,11 +133,14 @@
 
             const select = document.getElementById('modelSelect');
             for (let opt of select.options) {
-                if (opt.text.includes('(クラウド)')) {
-                    opt.text = opt.text.replace('(クラウド)', t.cloud);
+                if (opt.textContent.includes('(クラウド)')) {
+                    opt.textContent = opt.textContent.replace('(クラウド)', t.cloud);
                 }
-                if (opt.text.includes('(ローカル)')) {
-                    opt.text = opt.text.replace('(ローカル)', t.local);
+                if (opt.textContent.includes('(ローカル)')) {
+                    opt.textContent = opt.textContent.replace('(ローカル)', t.local);
+                }
+                if (opt.textContent.includes('(オフライン)')) {
+                    opt.textContent = opt.textContent.replace('(オフライン)', t.offline);
                 }
             }
             document.documentElement.lang = 'en';
