@@ -76,14 +76,6 @@
 
     <button id="sendButton">送信</button>
 
-    <div style="margin-top: 20px; font-size: 0.85em; color: #666;">
-        <span id="bookmarkletLabel">他サイトの内容を取り込む:</span>
-        <a id="bookmarkletLink" href="#"
-            style="background: #e1f5fe; padding: 2px 8px; border-radius: 10px; text-decoration: none; color: #0277bd; font-weight: bold;">Plower
-            Injector</a>
-        <span id="bookmarkletDesc">(このボタンをブックマークバーにドラッグして使ってください)</span>
-    </div>
-
     <hr>
 
 
@@ -114,9 +106,7 @@
                 hfTokenLabel: 'HF Access Token:',
                 saveHfToken: 'Save Token',
                 manual: '[Usage Guide]',
-                offline: '(Offline)',
-                bookmarklet: 'Capture content from other sites:',
-                bookmarkletDesc: '(Drag this button to your bookmarks bar)'
+                offline: '(Offline)'
             };
 
             document.title = t.title;
@@ -140,8 +130,6 @@
             document.getElementById('saveHfTokenButton').textContent = t.saveHfToken;
             document.getElementById('manualLink').textContent = t.manual;
             document.getElementById('sendButton').textContent = t.send;
-            document.getElementById('bookmarkletLabel').textContent = t.bookmarklet;
-            document.getElementById('bookmarkletDesc').textContent = t.bookmarkletDesc;
 
             const select = document.getElementById('modelSelect');
             for (let opt of select.options) {

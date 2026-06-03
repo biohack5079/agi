@@ -21,15 +21,15 @@ async function initGenerator(task, modelId, device) {
     if (currentGeneratorModelId === modelId && generatorPromise) {
         return generatorPromise;
     }
-
+    
     // 別のモデルをロード済みの場合は、WASMメモリ解放のため可能であれば破棄(dispose)する
     if (generatorPromise) {
         try {
             const oldGen = await generatorPromise;
             if (typeof oldGen.dispose === 'function') oldGen.dispose();
-        } catch (e) { }
+        } catch(e) {}
     }
-
+    
     currentGeneratorModelId = modelId;
     generatorPromise = pipeline(task, modelId, {
         device: device,
@@ -59,9 +59,9 @@ async function initGenerator(task, modelId, device) {
             : 'onnx-community/Qwen2.5-0.5B-Instruct';
         const task = dev === 'webgpu' ? 'image-text-to-text' : 'text-generation';
         postMessage({ status: 'loading', output: `Pre‑download initializing (${dev.toUpperCase()})...` });
-
+        
         await initGenerator(task, preModelId, dev);
-
+        
         postMessage({ status: 'loading', output: 'Model pre‑download completed.' });
     } catch (e) {
         console.warn('Pre‑download failed:', e);
@@ -86,7 +86,7 @@ self.onmessage = async (e) => {
     if (type === 'generate') {
         try {
             let currentDevice = await checkDevice();
-
+            
             // 画像があり、ユーザーが実行を希望している場合はVLMを使用。
             // CPU(WASM)環境では非常に低速ですが、ユーザーの要望により制限を解除します。
             let useVision = !!image;
@@ -165,7 +165,7 @@ self.onmessage = async (e) => {
             // --- 小型モデル (CPU/WASM) 用: 入力トークン数の安全制限 ---
             const isTinyFallback = generator.modelId === 'onnx-community/Qwen2.5-0.5B-Instruct';
             let maxNewTokens = 1024;
-
+            
             if (isTinyFallback) {
                 // 入力が長すぎるとメモリ不足になるため、入力側のみ安全策をとる
                 const promptText = typeof inputs === 'string' ? inputs : prompt;

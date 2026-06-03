@@ -1,14 +1,6 @@
 // 永続化された文書のメタデータ（ファイル名）のみを格納
 let persistentDocuments = [];
 
-// 同一オリジンの他タブ/iframeとファイル更新を同期するためのチャネル
-const syncChannel = new BroadcastChannel('plower_sync');
-syncChannel.addEventListener('message', (event) => {
-    if (event.data === 'update') {
-        loadDocuments();
-    }
-});
-
 // 現在解析対象となっている画像データ (Base64)
 let currentImageBase64 = null;
 
@@ -18,11 +10,8 @@ let currentImageName = "";
 // 現在解析対象となっている画像のオリジナルデータ (高画質)
 let currentImageBlob = null;
 
-// 言語設定の判定用 (初期値はブラウザ設定、後に質問内容で動的に更新)
-let isEn = !navigator.language.startsWith('ja');
-
-// システムプロンプトのキャッシュ
-let systemPromptCache = "";
+// 言語設定の判定 (日本語以外なら英語モード)
+const isEn = !navigator.language.startsWith('ja');
 
 const PREVIEW_MAX_DOCS = 5; // コンテンツ表示エリアに表示する最大ファイル数
 
@@ -53,23 +42,8 @@ async function saveDocumentToOPFS(name, content) {
         const writable = await fileHandle.createWritable();
         await writable.write(content);
         await writable.close();
-        syncChannel.postMessage('update');
     } catch (e) {
         console.error(`Failed to save document ${name} to OPFS:`, e);
-    }
-}
-
-// システムプロンプトを外部ファイルからロードする
-async function loadSystemPrompt(forceLang = null) {
-    const targetIsEn = forceLang !== null ? forceLang === 'en' : isEn;
-    const promptFile = targetIsEn ? './systemprompt_en.md' : './systemprompt_ja.md';
-    try {
-        const response = await fetch(promptFile);
-        if (response.ok) {
-            systemPromptCache = await response.text();
-        }
-    } catch (e) {
-        console.error("Failed to load system prompt:", e);
     }
 }
 
@@ -107,7 +81,7 @@ async function saveBlobToDirectory(blob, filename) {
 
 // RAGソースをリセットする関数 (OPFSディレクトリの削除)
 async function resetDocuments() {
-    const msgConfirm = isEn
+    const msgConfirm = isEn 
         ? "Are you sure you want to delete all RAG source documents?\n(This cannot be undone. All uploaded files will be cleared from LocalStorage.)"
         : "本当にRAGソース文書を全て削除しますか？\n（この操作は元に戻せません。アップロードされたファイルがストレージから全て消去されます。）";
     if (confirm(msgConfirm)) {
@@ -115,7 +89,6 @@ async function resetDocuments() {
             const root = await navigator.storage.getDirectory();
             await root.removeEntry('rag_sources', { recursive: true });
 
-            syncChannel.postMessage('update');
             persistentDocuments = [];
             document.getElementById('pasteArea').value = '';
             clearOcrDisplay();
@@ -125,8 +98,8 @@ async function resetDocuments() {
             if (syncInterval) clearInterval(syncInterval);
 
             // UIを更新
-            updateFileListDisplay();
-
+            updateFileListDisplay(); 
+            
             alert(isEn ? "All RAG source documents have been reset." : "RAGソース文書を全てリセットしました。");
         } catch (e) {
             console.error("Failed to reset documents:", e);
@@ -147,16 +120,16 @@ async function updateFileListDisplay() {
     const fileListUl = document.getElementById('fileListUl');
     const fileContentDiv = document.getElementById('fileContent');
     fileListUl.innerHTML = '';
-
+    
     // 解析中の画像やステータス表示を一時退避（リスト更新で消えないようにするため）
-    const ocrElements = Array.from(fileContentDiv.children).filter(el =>
+    const ocrElements = Array.from(fileContentDiv.children).filter(el => 
         el.classList.contains('ocr-status') || el.tagName === 'IMG' || (el.tagName === 'DIV' && el.querySelector('img'))
     );
 
     // ファイル名のリストを生成
     persistentDocuments.forEach((doc, index) => {
         const li = document.createElement('li');
-
+        
         // モバイル対応: レイアウトをFlexにしてメニューボタンを追加
         li.style.display = 'flex';
         li.style.justifyContent = 'space-between';
@@ -179,7 +152,7 @@ async function updateFileListDisplay() {
         menuBtn.onclick = (e) => {
             e.stopPropagation();
             const rect = e.target.getBoundingClientRect();
-            createContextMenu({ pageX: rect.left + window.scrollX, pageY: rect.bottom + window.scrollY, preventDefault: () => { } }, index);
+            createContextMenu({ pageX: rect.left + window.scrollX, pageY: rect.bottom + window.scrollY, preventDefault: () => {} }, index);
         };
         li.appendChild(menuBtn);
 
@@ -196,17 +169,17 @@ async function updateFileListDisplay() {
         });
         fileListUl.appendChild(li);
     });
-
+    
     // コンテンツ表示エリアの初期表示（最新の数ファイル）
     let initialContent = isEn ? '<h3>RAG Source Document Preview (Latest 5)</h3>\n' : '<h3>RAGソース文書プレビュー (最新5件)</h3>\n';
     const recentDocs = persistentDocuments.slice(-PREVIEW_MAX_DOCS).reverse();
-
+    
     if (recentDocs.length > 0) {
         for (const doc of recentDocs) {
             initialContent += `<p><strong>【${doc.name}】</strong></p>`;
             // 内容をオンデマンドで読み込む
             const content = await getDocumentContent(doc.name);
-
+            
             if (content.startsWith('data:image/')) {
                 // 画像の場合はサムネイルを表示
                 initialContent += `<div style="margin-bottom:10px;"><img src="${content}" style="max-width:200px; max-height:150px; border:1px solid #ccc; border-radius:4px;"></div>`;
@@ -219,7 +192,7 @@ async function updateFileListDisplay() {
         initialContent += isEn ? '<p>No RAG source documents available.</p>' : '<p>現在RAGのソースとなる文書はありません。</p>';
     }
     fileContentDiv.innerHTML = initialContent;
-
+    
     // 退避しておいたOCR要素をプレビューエリアに再挿入
     ocrElements.forEach(el => fileContentDiv.prepend(el));
 }
@@ -316,7 +289,7 @@ function showRenameDialog(titleText, initialValue) {
         title.textContent = titleText;
         title.style.marginTop = '0';
         title.style.marginBottom = '15px';
-
+        
         const input = document.createElement('input');
         input.type = 'text';
         input.value = initialValue;
@@ -341,7 +314,7 @@ function showRenameDialog(titleText, initialValue) {
         cancelBtn.style.padding = '6px 12px';
         cancelBtn.style.cursor = 'pointer';
         cancelBtn.onclick = () => closeDialog(null);
-
+        
         const okBtn = document.createElement('button');
         okBtn.textContent = 'OK';
         okBtn.style.padding = '6px 12px';
@@ -380,11 +353,10 @@ async function renameDocument(index) {
     if (newName && newName !== doc.name) {
         const content = await getDocumentContent(doc.name);
         await saveDocumentToOPFS(newName, content);
-
+        
         const ragDir = await getRagDir();
         await ragDir.removeEntry(doc.name);
-
-        syncChannel.postMessage('update');
+        
         doc.name = newName;
         updateFileListDisplay();
     }
@@ -396,8 +368,7 @@ async function deleteDocument(index) {
     if (confirm(msg)) {
         const ragDir = await getRagDir();
         await ragDir.removeEntry(doc.name);
-
-        syncChannel.postMessage('update');
+        
         persistentDocuments.splice(index, 1);
         updateFileListDisplay();
     }
@@ -421,8 +392,8 @@ async function syncLocalFolder() {
         // ユーザーにフォルダを選択させる
         const handle = await window.showDirectoryPicker({ mode: 'read' });
         directoryHandle = handle;
-
-        const msg = isEn
+        
+        const msg = isEn 
             ? `Start syncing with folder "${handle.name}"?\nFiles in this folder will be automatically synced.`
             : `フォルダ「${handle.name}」と同期を開始しますか？\nこのフォルダ内のファイルは自動的に同期（追加・更新）されます。`;
 
@@ -446,7 +417,7 @@ async function loadFilesFromDirectory(isSilent = false) {
     if (!directoryHandle) return;
 
     const fileContentDiv = document.getElementById('fileContent');
-
+    
     // サイレントモードでない場合のみローディング表示
     if (!isSilent) {
         fileContentDiv.innerHTML = isEn ? '<h3>Syncing files...</h3><div class="spinner"></div>' : '<h3>同期フォルダからファイルを読み込み中...</h3><div class="spinner"></div>';
@@ -532,7 +503,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fileInput.addEventListener('change', function () {
             const files = this.files;
             if (files.length === 0) return;
-
+            
             Array.from(files).forEach(async file => {
                 if (file.size > 10 * 1024 * 1024) {
                     alert(isEn ? `File "${file.name}" exceeds 10MB limit.` : `ファイル「${file.name}」はサイズ制限（10MB）を超えているためスキップされました。`);
@@ -551,7 +522,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     reader.readAsText(file);
                 }
             });
-
+            
             this.value = ''; // 連続アップロードのためにinputをクリア
         });
     }
@@ -563,7 +534,7 @@ async function handlePaste(e) {
     for (let i = 0; i < items.length; i++) {
         const item = items[i];
         if (item.type.indexOf('image') !== -1) {
-            e.preventDefault();
+            e.preventDefault(); 
             const blob = item.getAsFile();
             processImageSource(blob);
             break;
@@ -615,7 +586,7 @@ async function processImageSource(fileOrBlob) {
         const dlBtn = document.createElement('button');
         dlBtn.textContent = isEn ? 'Download as JPG' : 'JPGとして保存';
         dlBtn.style.padding = "5px 15px";
-
+        
         // JPG変換ロジック
         const tempImg = new Image();
         tempImg.onload = () => {
@@ -655,8 +626,8 @@ async function processImageSource(fileOrBlob) {
 
         // 解析を待たずに保存を確認
         setTimeout(() => {
-            const msg = isEn
-                ? `Image "${name}" detected. Save this image to RAG source?`
+            const msg = isEn 
+                ? `Image "${name}" detected. Save this image to RAG source?` 
                 : `画像「${name}」を検出しました。この画像をRAGソース（永続ファイル）に保存しますか？`;
             if (confirm(msg)) {
                 saveOcrTextAsFile();
@@ -678,7 +649,7 @@ async function saveOcrTextAsFile() {
     const now = new Date();
     const pad = (num) => num.toString().padStart(2, '0');
     const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-
+    
     // 画面上の表示やダイアログの初期値は .jpg に統一（ユーザーへの表示用）
     let defaultFilename = currentImageBase64 ? `${currentImageName || 'plower_image_' + timestamp}.jpg` : `plower_memo_${timestamp}.txt`;
     const filename = await showRenameDialog(isEn ? 'Save As' : '名前を付けて保存', defaultFilename);
@@ -739,7 +710,7 @@ async function saveOcrTextAsFile() {
             persistentDocuments.push({ name: filename });
         }
     }
-
+    
     document.getElementById('pasteArea').value = '';
     currentImageBase64 = null;
     currentImageBlob = null;
@@ -755,19 +726,19 @@ async function performLlmRequest(modelSelect, llmPrompt, apiKey, onChunk = null,
     let endpoint = '';
     let bodyData = {};
     let isStreaming = false;
-
+    
     const isGeminiCloudModel = modelSelect.toLowerCase().startsWith('gemini');
     const isSarasinaModel = modelSelect.toLowerCase().includes('sarasina');
-
+    
     if (isGeminiCloudModel) {
         // --- Gemini Cloud Model ---
         if (!apiKey) throw new Error("Gemini API Key is required.");
 
         // 利用可能な最新かつ安定したモデルエイリアスのみに絞り込みます
         const candidates = [
-            'gemini-2.5-flash',      // 最新の安定版（メイン利用に推奨）
-            'gemini-2.5-flash-lite', // 軽量・高速版（コスト効率重視）
-            'gemini-1.5-flash'       // 以前の安定版（予備として）
+        'gemini-2.5-flash',      // 最新の安定版（メイン利用に推奨）
+        'gemini-2.5-flash-lite', // 軽量・高速版（コスト効率重視）
+        'gemini-1.5-flash'       // 以前の安定版（予備として）
         ];
 
         let success = false;
@@ -778,11 +749,11 @@ async function performLlmRequest(modelSelect, llmPrompt, apiKey, onChunk = null,
                 console.log(`Trying Gemini model: ${modelVersion}`);
                 const currentEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelVersion}:generateContent?key=${apiKey}`;
                 const currentBody = {
-                    contents: [{
+                    contents: [{ 
                         parts: [
                             { text: llmPrompt },
                             ...(imageData ? [{ inline_data: { mime_type: "image/jpeg", data: imageData.split(',')[1] } }] : [])
-                        ]
+                        ] 
                     }],
                     generationConfig: { temperature: 0.1 }
                 };
@@ -810,7 +781,7 @@ async function performLlmRequest(modelSelect, llmPrompt, apiKey, onChunk = null,
                 if (json.candidates && json.candidates[0].content) {
                     result = json.candidates[0].content.parts.map(p => p.text).join('');
                     success = true;
-                    break;
+                    break; 
                 } else {
                     throw new Error(`Unexpected response format from ${modelVersion}`);
                 }
@@ -828,13 +799,13 @@ async function performLlmRequest(modelSelect, llmPrompt, apiKey, onChunk = null,
         // --- Sarasina Model ---
         endpoint = 'http://localhost:8001/api/sarasina';
         bodyData = { model: modelSelect, prompt: llmPrompt, temperature: 0.1 };
-
+        
         const response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(bodyData)
         });
-
+        
         if (!response.ok) throw new Error(`Sarasina Error: ${response.statusText}`);
         const json = await response.json();
         result = json.response || json.detail || "";
@@ -847,9 +818,9 @@ async function performLlmRequest(modelSelect, llmPrompt, apiKey, onChunk = null,
         // 現在はローカルのWeb Workerと直結していますが、この通信をWebSocketに切り替えることで
         // 別端末のブラウザ（GPU）で推論させることも可能になります。
         if (!window.capsuleWorker) {
-            window.capsuleWorker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
+            window.capsuleWorker = new Worker('worker.js', { type: 'module' });
         }
-
+        
         return new Promise((resolve, reject) => {
             let lastOutput = '';
             const onMessage = (e) => {
@@ -906,7 +877,7 @@ async function fetchOllamaStream(endpoint, bodyData, onChunk) {
     let result = '';
     const hfToken = localStorage.getItem('plowerHfToken');
     const headers = { 'Content-Type': 'application/json' };
-
+    
     // Hugging Face Space等へのアクセス用に認証トークンを付与
     if (hfToken) {
         headers['Authorization'] = `Bearer ${hfToken}`;
@@ -920,7 +891,7 @@ async function fetchOllamaStream(endpoint, bodyData, onChunk) {
 
     const contentType = response.headers.get("content-type");
     if (contentType && contentType.includes("text/html")) {
-        throw new Error("Server returned HTML. Check URL or Space status.");
+         throw new Error("Server returned HTML. Check URL or Space status.");
     }
 
     if (!response.ok) {
@@ -932,11 +903,11 @@ async function fetchOllamaStream(endpoint, bodyData, onChunk) {
     if (!response.body) throw new Error("No response body.");
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-
+    
     while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
+        
         const chunk = decoder.decode(value, { stream: true });
         chunk.trim().split('\n').forEach(line => {
             if (line) {
@@ -946,7 +917,7 @@ async function fetchOllamaStream(endpoint, bodyData, onChunk) {
                         result += json.response;
                         if (onChunk) onChunk(result);
                     }
-                } catch (e) { }
+                } catch (e) {}
             }
         });
     }
@@ -987,43 +958,22 @@ async function sendToModel() {
         // 貼り付けエリアのテキストは一時文書として扱う
         allDocuments.push({ name: '貼付けテキスト(一時)', content: pasteAreaContent });
     }
-
+    
     // --- フロントエンドでの検索処理を廃止 ---
-
-    // 質問文から言語を判定し、システムプロンプトを切り替える
-    const hasJapanese = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/.test(userInput);
-    const detectedIsEn = !hasJapanese;
-
-    // 言語が変わった場合、またはキャッシュがない場合はプロンプトをリロード
-    if (detectedIsEn !== isEn || !systemPromptCache) {
-        isEn = detectedIsEn;
-        await loadSystemPrompt(isEn ? 'en' : 'ja');
-    }
-
-    const languageSuffix = isEn
-        ? "\n\nImportant: Please answer in English."
-        : "\n\n重要: 回答は必ず日本語で行ってください。資料が英語であっても、日本語で詳しく説明してください。";
-
-    // 質問内容に関連するファイルを優先的にコンテキストに含めるためのソート
-    const prioritizedDocs = [...allDocuments].sort((a, b) => {
-        const aMentioned = userInput.toLowerCase().includes(a.name.toLowerCase());
-        const bMentioned = userInput.toLowerCase().includes(b.name.toLowerCase());
-        if (aMentioned && !bMentioned) return -1;
-        if (!aMentioned && bMentioned) return 1;
-        return 0;
-    });
-
+    // ユーザーの指示に基づき、ローカルでの検索や翻訳を行わず、全ての文書をコンテキストとしてLLMに渡す。
+    console.log(`全ての文書(${allDocuments.length}件)をコンテキストとして使用します。`);
+    
     let imageDataToSend = currentImageBase64;
 
     // 文書リストからテキストコンテキストを作成。
     // 画像データ（Base64文字列）が混ざるとプロンプトが巨大になり、AIが混乱するため、[Image Data]というラベルに置き換える。
     let contextParts = [];
-    for (const docMeta of prioritizedDocs) {
+    for (const docMeta of allDocuments) {
         const content = await getDocumentContent(docMeta.name);
         if (content.startsWith('data:image/')) {
             // 質問の中でファイル名が言及されている画像を優先的にVision入力として選択
-            const isMentioned = userInput.toLowerCase().includes(docMeta.name.toLowerCase()) ||
-                userInput.toLowerCase().includes(docMeta.name.split('.')[0].toLowerCase());
+            const isMentioned = userInput.toLowerCase().includes(docMeta.name.toLowerCase()) || 
+                               userInput.toLowerCase().includes(docMeta.name.split('.')[0].toLowerCase());
             if (isMentioned) {
                 imageDataToSend = content;
             }
@@ -1033,88 +983,55 @@ async function sendToModel() {
         }
     }
     let context = contextParts.join('\n\n');
-
+    
     // CPU推論 (GPT-2) はトークン上限が1024のため、コンテキストを大幅に制限する
     // GPT-2: プロンプトテンプレート自体が~100トークン、質問が~50トークンを占めるため
     // コンテキストは300文字程度に抑える必要がある (日本語は1文字≒2-3トークン)
     const isCpuCapsule = modelSelect === 'webgpu-wasm-capsule';
     // ブラウザ推論(WebGPU/WASM)はメモリ制限があるため、コンテキストを適度に制限する (2000文字程度)
-    const maxContextChars = isCpuCapsule ? 3000 : 15000;
+    const maxContextChars = isCpuCapsule ? 2000 : 15000;
     context = context.slice(0, maxContextChars);
-
-    // UIステータス表示の改善（回答エリアの初期化）
-    responseParagraph.innerHTML = `<strong>${isEn ? 'Answer' : '回答'}:</strong> <span class="status-msg">${isEn ? 'Thinking...' : '思考中...'}</span>`;
-
-    const systemPrompt = systemPromptCache || "You are a world-class coding assistant.";
 
     // プロンプトの生成: LlamaやQwenなど高性能モデル用に詳細な指示を含める
     let prompt;
-    // WebGPUカプセルと外部APIでプロンプト構造を統一（小型モデルでもシステム指示を認識しやすくするため）
-    prompt = `### System Instructions
-${systemPrompt}
+    if (isCpuCapsule) {
+        if (!context) {
+            // コンテキストがない場合のシンプルなプロンプト
+            prompt = userInput;
+        } else {
+            // カプセル版（小型モデル）用: 英語の複雑な指示は混乱を招くため、シンプルな日本語プロンプトを使用
+            prompt = `以下の参考資料のみに基づいて、質問に日本語で簡潔に答えてください。\n\n【参考資料】\n${context}\n\n【質問】\n${userInput}`;
+        }
+    } else {
+        // 高性能モデル用: 詳細な指示付きプロンプト
+        prompt = `You are a helpful assistant. Your task is to answer the user's question based *only* on the provided [Reference Documents].
 
-### Reference Documents (Context)
+IMPORTANT INSTRUCTIONS:
+1.  **Answer in the same language as the user's [Question].** (If the question is in Japanese, answer in Japanese. If in English, answer in English).
+2.  Base your answer strictly on the information within the [Reference Documents]. Do not use any external knowledge.
+3.  **Language Handling:** The documents may be in a different language than the question. You must translate and interpret the documents to answer the question accurately.
+4.  If the answer cannot be found in the [Reference Documents], you MUST state that the information is not available, in the same language as the question.
+5.  **Visual Reference:** If an image (marked as [Image Data]) is requested, use the vision input to provide details.
+
+[Reference Documents]
 ${context}
 
----
-### User Question
-${userInput}
-
----
-### Final Instruction:
-${languageSuffix}
-Strictly output ONLY the answer to the question. Do not include project headers or "About" sections.`;
+[Question]
+${userInput}`;
+    }
 
     // --- 回答生成 ---
     try {
         // 共通関数を使ってリクエスト
         const finalResult = await performLlmRequest(modelSelect, prompt, geminiApiKey, (chunkText) => {
             // ストリーミング更新
-            // ステータスメッセージを分離して表示
-            let statusHtml = "";
-            if (isCpuCapsule) {
-                statusHtml = `<br><small style="color:#888;">[${isEn ? 'WASM/CPU Inference' : 'WASM/CPU推論実行中'}]</small>`;
-            }
-            responseParagraph.innerHTML = `<strong>${isEn ? 'Answer' : '回答'}:</strong> ${chunkText.replace(/\n/g, '<br>')}${statusHtml}`;
+            responseParagraph.innerHTML = `<strong>${isEn ? 'Answer' : '回答'}:</strong> ${chunkText.replace(/\n/g, '<br>')}`;
             chatLog.scrollTop = chatLog.scrollHeight;
         }, imageDataToSend);
 
         // 最終結果の表示 (非ストリーミングモデル用)
         responseParagraph.innerHTML = `<strong>${isEn ? 'Answer' : '回答'}:</strong> ${finalResult.replace(/\n/g, '<br>')}`;
-
-        // 「RAGソースに加える」ボタンの追加
-        const saveChatBtn = document.createElement('button');
-        saveChatBtn.textContent = isEn ? 'Add to RAG Source' : 'RAGソースに加える';
-        saveChatBtn.style.marginTop = '10px';
-        saveChatBtn.style.display = 'block';
-        saveChatBtn.onclick = async () => {
-            const chatContent = `Question: ${userInput}\n\nAnswer: ${finalResult}`;
-            const now = new Date();
-            const pad = (num) => num.toString().padStart(2, '0');
-            const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-            const defaultName = `chat_memo_${timestamp}.txt`;
-
-            const filename = await showRenameDialog(isEn ? 'Save Chat to RAG' : 'チャットをRAGソースに保存', defaultName);
-            if (!filename) return;
-
-            // OPFSへの保存
-            await saveDocumentToOPFS(filename, chatContent);
-            if (!persistentDocuments.some(d => d.name === filename)) {
-                persistentDocuments.push({ name: filename });
-            }
-
-            // ローカルフォルダ同期が有効ならそちらにも保存
-            if (directoryHandle) {
-                const blob = new Blob([chatContent], { type: 'text/plain;charset=utf-8' });
-                await saveBlobToDirectory(blob, filename);
-            }
-
-            await updateFileListDisplay();
-            saveChatBtn.textContent = isEn ? 'Added to RAG' : 'RAGに追加済み';
-            saveChatBtn.disabled = true;
-        };
-        responseParagraph.appendChild(saveChatBtn);
-
+        
         // 画像を解析に使用した場合、保存を提案する
         if (currentImageBase64) {
             const savePrompt = document.createElement('div');
@@ -1122,7 +1039,7 @@ Strictly output ONLY the answer to the question. Do not include project headers 
             savePrompt.style.padding = '10px';
             savePrompt.style.border = '1px dashed #ccc';
             savePrompt.innerHTML = `<p style="margin:0 0 10px 0; font-size:0.9em;">${isEn ? 'Analysis used an image. Save it locally?' : '画像を解析に使用しました。この画像をローカルに保存しますか？'}</p>`;
-
+            
             const dlBtn = document.createElement('button');
             dlBtn.textContent = isEn ? 'Save as JPG' : '画像をJPGで保存';
             const imgDataToSave = currentImageBase64;
@@ -1139,25 +1056,25 @@ Strictly output ONLY the answer to the question. Do not include project headers 
             currentImageBlob = null;
             currentImageName = "";
         }
-
+        
         userInputElement.value = ''; // 質問欄をクリア
 
     } catch (error) {
         let errorMsg = error.message;
         // HTTPS環境からHTTP(ローカル)へ接続しようとして失敗した場合のヒントを追加
         const isNetworkError = error.name === 'TypeError' || error.message.toLowerCase().includes('fetch') || error.message.toLowerCase().includes('network');
-
+        
         if (isNetworkError) {
             if (window.location.protocol === 'file:') {
-                errorMsg += isEn
+                errorMsg += isEn 
                     ? "<br>⚠️ <strong>Security Restriction:</strong> You cannot make API requests when opening the file directly (file://). Please use a local server like 'Live Server' in VS Code or run 'npx serve'."
                     : "<br>⚠️ <strong>セキュリティ制限:</strong> ファイルを直接ブラウザで開いている(file://)ため、APIリクエストが遮断されました。VS CodeのLive Serverを使用するか、'npx serve' 等のローカルサーバー経由で開いてください。";
             } else {
-                errorMsg += isEn
+                errorMsg += isEn 
                     ? "<br>⚠️ Request Blocked: Check your Internet connection and API Token. If using Gemma 3, make sure you've accepted the license on the Hugging Face model page."
                     : "<br>⚠️ リクエストが遮断されました: トークンの権限、ネット接続、広告ブロックを確認してください。Gemma 3を使用する場合、HFのモデルページでライセンスへの同意が必要です。";
                 errorMsg += `<br><small>Debug Info: ${error.name} - ${error.message}</small>`;
-
+                
                 if (window.location.protocol === 'https:') {
                     errorMsg += isEn ? " (Mixed Content check)" : " (HTTPS/HTTP混在の可能性)";
                 }
@@ -1176,39 +1093,12 @@ Strictly output ONLY the answer to the question. Do not include project headers 
 
 // --- 初期化とイベントリスナー設定 ---
 document.addEventListener('DOMContentLoaded', () => {
-    // --- ブックマークレットのURLを現在の環境（localhostか公開URLか）に合わせて動的に更新 ---
-    const bookmarkletLink = document.getElementById('bookmarkletLink');
-    if (bookmarkletLink) {
-        const currentUrl = window.location.origin + window.location.pathname;
-        // ブックマークレット内の 'u' (URL) を現在のURLに差し替える
-        const bookmarkletCode = `javascript:(function(){
-            const u='${currentUrl}';
-            const n='plower_popup';
-            const w=window.open(u, n, 'width=500,height=900');
-            const send=()=>{
-                w.postMessage({
-                    type:'PLOWER_INJECT_CONTENT',
-                    name:'Page: '+document.title.substring(0,30)+'.txt',
-                    content:'URL: '+window.location.href+'\\n\\n'+document.body.innerText
-                },'*');
-            };
-            window.addEventListener('message', function listener(e){
-                if(e.data==='PLOWER_READY'){ send(); window.removeEventListener('message', listener); }
-            });
-            /* 念のための予備送信 */
-            setTimeout(send, 3000);
-            if(window.focus)w.focus();
-        })();`.replace(/\s+/g, ' ');
-        bookmarkletLink.href = bookmarkletCode;
-    }
-
-    loadDocuments();
-    loadSystemPrompt(); // システムプロンプトの事前読み込み
+    loadDocuments(); 
     document.getElementById('sendButton').addEventListener('click', sendToModel);
     document.getElementById('resetDocsButton').addEventListener('click', resetDocuments);
     document.getElementById('saveOcrButton').addEventListener('click', saveOcrTextAsFile);
     document.getElementById('syncFolderButton').addEventListener('click', syncLocalFolder);
-
+    
     // DOMロード後にイベントリスナーを登録 (安全策)
     const pasteArea = document.getElementById('pasteArea');
     if (pasteArea) pasteArea.addEventListener('paste', handlePaste);
@@ -1218,7 +1108,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (savedKey) {
         document.getElementById('geminiApiKey').value = savedKey;
     }
-
+    
     const saveKeyBtn = document.getElementById('saveKeyButton');
     saveKeyBtn.addEventListener('click', () => {
         const key = document.getElementById('geminiApiKey').value.trim();
@@ -1240,7 +1130,7 @@ document.addEventListener('DOMContentLoaded', () => {
         alert(isEn ? 'Gemini API Key deleted.' : '保存されたGemini APIキーを削除しました。');
     });
     saveKeyBtn.parentNode.insertBefore(deleteKeyBtn, saveKeyBtn.nextSibling);
-
+    
     // --- Hugging Face Access Token のロードと保存処理 ---
     const savedHfToken = localStorage.getItem('plowerHfToken');
     if (savedHfToken) {
@@ -1282,7 +1172,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let url = hfUrlInput.value.trim();
         if (!url) url = 'http://localhost:11434';
         let finalMessage = isEn ? 'HuggingFace URL saved.' : 'HuggingFaceのURL設定を保存しました。';
-
+        
         // Hugging Face SpacesのWeb URLが入力された場合、Direct URLに自動変換する
         // 例: https://huggingface.co/spaces/username/spacename -> https://username-spacename.hf.space
         const hfMatch = url.match(/^https?:\/\/huggingface\.co\/spaces\/([^\/]+)\/([^\/]+)\/?$/);
@@ -1293,7 +1183,7 @@ document.addEventListener('DOMContentLoaded', () => {
             hfUrlInput.value = url; // 入力欄も更新
             finalMessage = isEn ? 'Converted Hugging Face Space URL to Direct URL format and saved.' : 'Hugging Face SpaceのWeb URLを検出し、API用のDirect URL形式に自動変換して保存しました。';
         }
-
+        
         localStorage.setItem('plowerHfUrl', url);
         alert(finalMessage);
     });
@@ -1310,30 +1200,10 @@ document.addEventListener('DOMContentLoaded', () => {
     saveHfUrlBtn.parentNode.insertBefore(deleteHfUrlBtn, saveHfUrlBtn.nextSibling);
 
     // Enterキーでの送信機能 (keydownを使用し、リピート入力とShift+Enterを除外)
-    document.getElementById('userInput').addEventListener('keydown', function (e) {
+    document.getElementById('userInput').addEventListener('keydown', function(e) {
         if (e.key === 'Enter' && !e.shiftKey && !e.repeat && !isSending) {
             e.preventDefault();
             sendToModel();
         }
     });
-
-    // --- ブックマークレット連携用: 外部サイトからのコンテンツ注入リスナー ---
-    window.addEventListener('message', async (event) => {
-        // セキュリティ上の配慮が必要な場合は event.origin をチェックしてください
-        if (event.data && event.data.type === 'PLOWER_INJECT_CONTENT') {
-            const { name, content } = event.data;
-            if (name && content) {
-                await saveDocumentToOPFS(name, content);
-                if (!persistentDocuments.some(d => d.name === name)) {
-                    persistentDocuments.push({ name: name });
-                }
-                await updateFileListDisplay();
-            }
-        }
-    });
-
-    // ブックマークレット連携用: ポップアップ元のページに対して準備完了を通知
-    if (window.opener) {
-        window.opener.postMessage('PLOWER_READY', '*');
-    }
 });
