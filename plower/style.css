@@ -5,13 +5,37 @@ body {
     color: #333;
 }
 
+h1 {
+    white-space: nowrap;
+}
+
+/* ブックマークレットリンクのスタイル */
+.bookmarklet-link {
+    font-size: 0.4em;
+    margin-left: 10px;
+    text-decoration: none;
+    background: #e3f2fd;
+    padding: 5px 10px;
+    border-radius: 4px;
+    color: #1976d2;
+    vertical-align: middle;
+    border: 1px dashed #1976d2;
+    cursor: move;
+    /* ドラッグ可能であることを示す */
+}
+
 /* --- RAGコントロールヘッダーの修正スタイル (レイアウト崩れ対策) --- */
 .rag-controls-header {
-    display: flex; /* 要素を横並びにする */
-    align-items: center; /* 垂直方向の中央揃え */
-    gap: 15px; /* 要素間の間隔 */
-    margin-top: 20px; /* H1からの間隔を確保 */
-    margin-bottom: 20px; /* 次のセクションとの間隔 */
+    display: flex;
+    /* 要素を横並びにする */
+    align-items: center;
+    /* 垂直方向の中央揃え */
+    gap: 15px;
+    /* 要素間の間隔 */
+    margin-top: 20px;
+    /* H1からの間隔を確保 */
+    margin-bottom: 20px;
+    /* 次のセクションとの間隔 */
 }
 
 /* rag-controls-header内のラベルは、Flexboxで位置を揃えるため、標準のmarginをリセット */
@@ -21,11 +45,13 @@ body {
 
 /* リセットボタンのスタイルも、Flexbox制御のためにマージンをリセット */
 #resetDocsButton {
-    background-color: #dc3545; /* 赤色 */
+    background-color: #dc3545;
+    /* 赤色 */
     padding: 8px 15px;
-    margin-left: 0; 
-    margin-top: 0; 
+    margin-left: 0;
+    margin-top: 0;
 }
+
 /* ------------------------------------------------------------- */
 
 
@@ -96,7 +122,8 @@ body {
 
 /* 貼り付けエリア */
 #pasteArea {
-    height: 100px; /* 高さを調整 */
+    height: 100px;
+    /* 高さを調整 */
 }
 
 /* 入力系 */
@@ -183,6 +210,7 @@ button:disabled {
     align-items: center;
     gap: 10px;
 }
+
 /* スピナーアニメーション（オプション） */
 .spinner {
     border: 4px solid #f3f3f3;
@@ -194,6 +222,11 @@ button:disabled {
 }
 
 @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
 }

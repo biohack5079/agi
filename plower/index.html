@@ -5,16 +5,13 @@
     <meta charset="UTF-8">
     <title>ローカル情報を掘り起こすAIショベル「プローワー」。</title>
     <link rel="stylesheet" href="./style.css">
-    <style>
-        h1 {
-            white-space: nowrap;
-        }
-    </style>
 </head>
 
 <body>
     <h1><span id="titleText">ローカル情報を掘り起こすAIショベル「プローワー」。</span> <a href="manual.html" id="manualLink"
             style="font-size: 0.4em; margin-left: 15px; text-decoration: none; background: #eee; padding: 5px 10px; border-radius: 4px; color: #333; vertical-align: middle;">[使い方説明書]</a>
+        <a id="bookmarkletLink" href="#" title="このリンクをブックマークバーにドラッグして登録してください。閲覧中のサイトをAIに送れるようになります。"
+            class="bookmarklet-link">【ブラウザ連携】</a>
     </h1>
     <div class="rag-controls-header">
         <label for="fileInput">RAGソース (フォルダ/ファイル):</label>
@@ -106,6 +103,8 @@
                 hfTokenLabel: 'HF Access Token:',
                 saveHfToken: 'Save Token',
                 manual: '[Usage Guide]',
+                bookmarklet: '[Browser Link]',
+                bookmarkletTip: 'Drag this link to your bookmark bar. It lets you send the current page to Plower.',
                 offline: '(Offline)'
             };
 
@@ -129,6 +128,8 @@
             document.querySelector('label[for="hfToken"]').textContent = t.hfTokenLabel;
             document.getElementById('saveHfTokenButton').textContent = t.saveHfToken;
             document.getElementById('manualLink').textContent = t.manual;
+            document.getElementById('bookmarkletLink').textContent = t.bookmarklet;
+            document.getElementById('bookmarkletLink').title = t.bookmarkletTip;
             document.getElementById('sendButton').textContent = t.send;
 
             const select = document.getElementById('modelSelect');
