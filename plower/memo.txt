@@ -74,9 +74,9 @@ python -m http.server 8000
 
 
 ### push
-git add .
-git commit -m "change"
-git push -u origin main
+git add . && \
+git commit -m "feat: change $(date +'%Y-%m-%d %H:%M:%S')" && \
+git push -u origin main || echo "Git push failed"
 
 ### venvをリポジトリから削除
 git rm -r --cached venv
