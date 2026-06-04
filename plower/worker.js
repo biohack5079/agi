@@ -46,6 +46,17 @@ async function initGenerator(task, modelId, device) {
     return generatorPromise;
 }
 
+// デバイスの判定（WebGPUが使えればWebGPU、ダメならCPUのWASMへ自動フォールバック）
+async function checkDevice() {
+    if (navigator.gpu) {
+        try {
+            const adapter = await navigator.gpu.requestAdapter();
+            if (adapter) return 'webgpu';
+        } catch (e) { }
+    }
+    return 'wasm';
+}
+
 // -------------------------------------------------
 // Pre‑download a lightweight model (or Vision model if GPU is available)
 // This runs when the worker script is evaluated, so the UI
@@ -68,17 +79,6 @@ async function initGenerator(task, modelId, device) {
         // ignore – fallback will happen on first request
     }
 })();
-
-// デバイスの判定（WebGPUが使えればWebGPU、ダメならCPUのWASMへ自動フォールバック）
-async function checkDevice() {
-    if (navigator.gpu) {
-        try {
-            const adapter = await navigator.gpu.requestAdapter();
-            if (adapter) return 'webgpu';
-        } catch (e) { }
-    }
-    return 'wasm';
-}
 
 self.onmessage = async (e) => {
     const { type, prompt, image } = e.data;
@@ -258,7 +258,7 @@ self.onmessage = async (e) => {
             console.error(error);
             if (error.message && error.message.includes('looping content')) {
                 // Add the required tag and return the original prompt as fallback
-                const safeOutput = warningPrefix + '[ignoring loop detection]\n' + prompt;
+                const safeOutput = '[ignoring loop detection]\n' + prompt;
                 postMessage({ status: 'complete', output: safeOutput.trim() });
             } else {
                 postMessage({ status: 'error', error: error.toString() });
